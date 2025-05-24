@@ -26,12 +26,11 @@ export async function POST(request: Request) {
     // Parse CSV to array of objects
     const parsed = Papa.parse(csv, { header: true });
     // Clean parsed data to remove empty string keys and add tags array
-    const cleanedData = parsed.data.map(obj => {
-      const cleaned = {};
+    const cleanedData = (parsed.data as Record<string, string>[]).map(obj => {
+      const cleaned: Record<string, string | string[]> = {};
       for (const key in obj) {
         if (key && key.trim() !== '' && key !== 'tag' && key !== 'tags') cleaned[key] = obj[key];
       }
-      // Always add tags as an array
       cleaned['tags'] = [];
       return cleaned;
     });

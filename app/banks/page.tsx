@@ -8,7 +8,6 @@ import CreateBankModal from '../components/Modals/CreateBankModal';
 export default function BanksPage() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +33,6 @@ export default function BanksPage() {
   }, []);
 
   const handleCreateBank = async (bankName: string, tags: string[]) => {
-    setIsLoading(true);
     setError(null);
     try {
       const response = await fetch('/api/bank', {
@@ -53,8 +51,6 @@ export default function BanksPage() {
     } catch (error) {
       console.error('Error creating bank:', error);
       setError(error instanceof Error ? error.message : 'Failed to create bank. Please try again.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -99,7 +95,7 @@ export default function BanksPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {banks.length === 0 ? (
           <div className="col-span-full text-center py-12 text-gray-500">
-            No banks added yet. Click "Add Bank" to get started.
+            No banks added yet. Click &quot;Add Bank&quot; to get started.
           </div>
         ) : (
           banks.map((bank) => (

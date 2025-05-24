@@ -6,7 +6,7 @@ interface TransactionPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   transactionId: string | null;
-  transactionData: any[];
+  transactionData: Record<string, string | Tag[] | undefined>[];
   fileName?: string;
 }
 
@@ -17,14 +17,13 @@ interface Tag {
 }
 
 const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpen, onClose, transactionId, transactionData, fileName }) => {
-  const [data, setData] = useState<any[]>([]);
-  const [filteredData, setFilteredData] = useState<any[]>([]);
+  const [data, setData] = useState<Record<string, string | Tag[] | undefined>[]>([]);
+  const [filteredData, setFilteredData] = useState<Record<string, string | Tag[] | undefined>[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
-  const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -37,7 +36,6 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
     setSearch('');
     setSelectedRows(new Set());
     setSelectAll(false);
-    setTagInput('');
     setSelectedTagId('');
     // Fetch all tags
     fetch('/api/tags')
@@ -51,8 +49,8 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
   useEffect(() => {
     if (!isOpen || allTags.length === 0) return;
     setData(transactionData.map(obj => {
-      let tags = Array.isArray(obj.tags) ? obj.tags : [];
-      tags = tags.map(tag => {
+      const tags = Array.isArray(obj.tags) ? obj.tags : [];
+      const mappedTags = tags.map((tag: Tag | string) => {
         if (typeof tag === 'string') {
           return allTags.find(t => t.id === tag) || { id: tag, name: tag, color: '#60a5fa' };
         }
@@ -62,7 +60,7 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
         }
         return tag;
       });
-      return { ...obj, tags };
+      return { ...obj, tags: mappedTags };
     }));
   }, [allTags, isOpen, transactionData]);
 
@@ -83,7 +81,7 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
     } else {
       setSelectedRows(new Set());
     }
-  }, [selectAll, filteredData.length]);
+  }, [selectAll, filteredData.length, filteredData]);
 
   const handleRowSelect = (idx: number) => {
     const newSet = new Set(selectedRows);
@@ -119,7 +117,7 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
     if (!tagObj) return;
     const newRows = data.map((row, i) => {
       if (selectedRows.has(i)) {
-        let tags = Array.isArray(row.tags) ? [...row.tags] : [];
+        const tags = Array.isArray(row.tags) ? [...row.tags] : [];
         if (!tags.some((t: Tag) => t.id === tagObj.id)) tags.push(tagObj);
         return { ...row, tags };
       }
@@ -155,8 +153,8 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
         throw new Error(err.error || 'Failed to save updated transaction');
       }
       alert('Transaction updated!');
-    } catch (err: any) {
-      setSaveError(err.message);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save updated transaction');
     } finally {
       setSaving(false);
     }
@@ -227,7 +225,9 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
                         />
                       </td>
                       {headers.map((header, j) => (
-                        <td key={j} className="border px-2 py-1 whitespace-nowrap">{row[header]}</td>
+                        <td key={j} className="border px-2 py-1 whitespace-nowrap">
+                          {String(row[header])}
+                        </td>
                       ))}
                       <td className="border px-2 py-1 whitespace-nowrap">
                         {Array.isArray(row.tags) && row.tags.length > 0 ? row.tags.map((tag: Tag, tagIdx: number) => (

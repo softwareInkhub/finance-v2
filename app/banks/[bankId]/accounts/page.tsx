@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import Modal from "../../../components/Modals/Modal";
 
@@ -15,7 +15,6 @@ interface Account {
 
 export default function AccountsPage() {
   const { bankId } = useParams();
-  const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState({
@@ -35,7 +34,7 @@ export default function AccountsPage() {
         if (!res.ok) throw new Error("Failed to fetch accounts");
         const data = await res.json();
         setAccounts(data);
-      } catch (err) {
+      } catch {
         setError("Failed to fetch accounts");
       }
     };
@@ -63,7 +62,7 @@ export default function AccountsPage() {
       setAccounts(prev => [...prev, newAccount]);
       setIsModalOpen(false);
       setForm({ accountHolderName: "", accountNumber: "", ifscCode: "", tags: "" });
-    } catch (err) {
+    } catch {
       setError("Failed to create account");
     } finally {
       setIsLoading(false);
@@ -150,7 +149,7 @@ export default function AccountsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {accounts.length === 0 ? (
           <div className="col-span-full text-center py-12 text-gray-500">
-            No accounts added yet. Click "Add Account" to get started.
+            No accounts added yet. Click &quot;Add Account&quot; to get started.
           </div>
         ) : (
           accounts.map(account => (

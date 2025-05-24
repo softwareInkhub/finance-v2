@@ -137,8 +137,8 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
       setStartRow(null);
       setEndRow(null);
       alert('Transaction slice saved successfully!');
-    } catch (err: any) {
-      setSaveError(err.message);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save transaction slice');
     } finally {
       setSaving(false);
     }

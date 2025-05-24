@@ -29,7 +29,7 @@ export default function TagsPage() {
         setTags([]);
         setError(data.error || 'Failed to fetch tags');
       }
-    } catch (err) {
+    } catch {
       setTags([]);
       setError('Failed to fetch tags');
     } finally {

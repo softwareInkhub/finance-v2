@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, s3, S3_BUCKET, TABLES } from '../../aws-client';
+import { docClient, TABLES } from '../../aws-client';
 
 export const runtime = 'nodejs';
 

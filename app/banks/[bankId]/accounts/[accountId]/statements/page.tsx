@@ -15,6 +15,22 @@ interface Statement {
   fileName?: string;
 }
 
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface Transaction {
+  id: string;
+  statementId: string;
+  fileName?: string;
+  startRow?: number;
+  endRow?: number;
+  createdAt?: string;
+  transactionData?: Record<string, string | Tag[] | undefined>[];
+}
+
 export default function StatementsPage() {
   const { bankId, accountId } = useParams();
   const [statements, setStatements] = useState<Statement[]>([]);
@@ -26,7 +42,7 @@ export default function StatementsPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedStatementId, setSelectedStatementId] = useState<string | null>(null);
   const [tab, setTab] = useState<'statements' | 'transactions'>('statements');
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
   const [transactionPreviewOpen, setTransactionPreviewOpen] = useState(false);
@@ -41,7 +57,7 @@ export default function StatementsPage() {
         if (!res.ok) throw new Error("Failed to fetch statements");
         const data = await res.json();
         setStatements(data);
-      } catch (err) {
+      } catch {
         setError("Failed to fetch statements");
       }
     };
@@ -187,7 +203,7 @@ export default function StatementsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {statements.length === 0 ? (
             <div className="col-span-full text-center py-12 text-gray-500">
-              No statements uploaded yet. Click "Upload Statement" to get started.
+              No statements uploaded yet. Click &quot;Upload Statement&quot; to get started.
             </div>
           ) : (
             statements.map(statement => (
