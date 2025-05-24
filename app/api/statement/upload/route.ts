@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing file, bankId, or accountId' }, { status: 400 });
     }
     const statementId = uuidv4();
-    const key = `${statementId}.csv`;
+    const key = `statements/${statementId}.csv`;
     // Upload file to S3
     const arrayBuffer = await file.arrayBuffer();
     await s3.send(new PutObjectCommand({
