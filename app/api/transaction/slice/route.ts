@@ -3,12 +3,13 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, s3, S3_BUCKET, TABLES } from '../../aws-client';
 import { v4 as uuidv4 } from 'uuid';
+import Papa from 'papaparse';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const { csv, statementId, startRow, endRow, bankId, accountId } = await request.json();
+    const { csv, statementId, startRow, endRow, bankId, accountId, tags = [], fileName } = await request.json();
     if (!csv || !statementId || startRow == null || endRow == null || !bankId || !accountId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -22,7 +23,19 @@ export async function POST(request: Request) {
       ContentType: 'text/csv',
     }));
     const s3FileUrl = `https://${S3_BUCKET}.s3.amazonaws.com/${key}`;
-    // Save metadata to DynamoDB
+    // Parse CSV to array of objects
+    const parsed = Papa.parse(csv, { header: true });
+    // Clean parsed data to remove empty string keys and add tags array
+    const cleanedData = parsed.data.map(obj => {
+      const cleaned = {};
+      for (const key in obj) {
+        if (key && key.trim() !== '' && key !== 'tag' && key !== 'tags') cleaned[key] = obj[key];
+      }
+      // Always add tags as an array
+      cleaned['tags'] = [];
+      return cleaned;
+    });
+    // Save metadata and data to DynamoDB
     const transaction = {
       id: transactionId,
       statementId,
@@ -31,6 +44,9 @@ export async function POST(request: Request) {
       startRow,
       endRow,
       s3FileUrl,
+      fileName: fileName || '',
+      transactionData: cleanedData,
+      tags,
       createdAt: new Date().toISOString(),
     };
     await docClient.send(

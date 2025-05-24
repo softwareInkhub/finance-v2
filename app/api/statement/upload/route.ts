@@ -12,11 +12,14 @@ export async function POST(request: Request) {
     const file = formData.get('file');
     const bankId = formData.get('bankId');
     const accountId = formData.get('accountId');
+    const fileName = formData.get('fileName');
     if (!file || typeof file === 'string' || !bankId || !accountId) {
       return NextResponse.json({ error: 'Missing file, bankId, or accountId' }, { status: 400 });
     }
     const statementId = uuidv4();
-    const key = `statements/${statementId}.csv`;
+    let baseFileName = typeof fileName === 'string' && fileName.trim() ? fileName.trim() : `${statementId}.csv`;
+    if (!baseFileName.endsWith('.csv')) baseFileName += '.csv';
+    const key = `statements/${baseFileName}`;
     // Upload file to S3
     const arrayBuffer = await file.arrayBuffer();
     await s3.send(new PutObjectCommand({
@@ -32,6 +35,7 @@ export async function POST(request: Request) {
       bankId,
       accountId,
       s3FileUrl,
+      fileName: baseFileName,
       transactionHeader: [],
       transactionData: [],
       tags: [],

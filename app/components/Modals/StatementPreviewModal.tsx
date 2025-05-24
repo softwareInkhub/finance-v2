@@ -9,6 +9,7 @@ interface StatementPreviewModalProps {
   statementId: string | null;
   bankId: string | null;
   accountId: string | null;
+  fileName?: string;
 }
 
 const SlicedPreviewModal: React.FC<{
@@ -54,7 +55,7 @@ const SlicedPreviewModal: React.FC<{
   </Modal>
 );
 
-const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, onClose, s3FileUrl, statementId, bankId, accountId }) => {
+const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, onClose, s3FileUrl, statementId, bankId, accountId, fileName }) => {
   const [data, setData] = useState<string[][]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +125,8 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
           accountId,
           csv,
           startRow,
-          endRow
+          endRow,
+          fileName: fileName || '',
         })
       });
       if (!res.ok) {

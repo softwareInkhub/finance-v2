@@ -5,13 +5,20 @@ import Papa from 'papaparse';
 interface TransactionPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
-  s3FileUrl: string | null;
   transactionId: string | null;
+  transactionData: any[];
+  fileName?: string;
 }
 
-const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpen, onClose, s3FileUrl, transactionId }) => {
-  const [data, setData] = useState<string[][]>([]);
-  const [filteredData, setFilteredData] = useState<string[][]>([]);
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
+const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpen, onClose, transactionId, transactionData, fileName }) => {
+  const [data, setData] = useState<any[]>([]);
+  const [filteredData, setFilteredData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -20,72 +27,62 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
   const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [selectedTagId, setSelectedTagId] = useState<string>('');
 
   useEffect(() => {
-    if (!isOpen || !s3FileUrl) return;
+    if (!isOpen) return;
     setLoading(true);
     setError(null);
     setSearch('');
     setSelectedRows(new Set());
     setSelectAll(false);
     setTagInput('');
-    // Extract the key from the s3FileUrl (full path after .amazonaws.com/)
-    const key = s3FileUrl.split('.amazonaws.com/')[1];
-    if (!key) {
-      setError('Invalid S3 file URL');
-      setLoading(false);
-      return;
-    }
-    fetch('/api/statement/presign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key }),
-    })
+    setSelectedTagId('');
+    // Fetch all tags
+    fetch('/api/tags')
       .then(res => res.json())
-      .then(({ url, error }) => {
-        if (error || !url) throw new Error(error || 'Failed to get presigned URL');
-        return fetch(url);
-      })
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch CSV');
-        return res.text();
-      })
-      .then(csvText => {
-        const parsed = Papa.parse<string[]>(csvText, { skipEmptyLines: true });
-        if (parsed.errors.length) throw new Error('Failed to parse CSV');
-        let parsedData = parsed.data as string[][];
-        // Ensure a Tag column exists
-        if (parsedData.length && parsedData[0][parsedData[0].length - 1] !== 'Tags') {
-          parsedData[0].push('Tags');
-          for (let i = 1; i < parsedData.length; ++i) parsedData[i].push('');
-        }
-        setData(parsedData);
-      })
-      .catch(err => setError(err.message))
+      .then(data => { if (Array.isArray(data)) setAllTags(data); else setAllTags([]); })
+      .catch(() => setAllTags([]))
       .finally(() => setLoading(false));
-  }, [isOpen, s3FileUrl]);
+  }, [isOpen, transactionData]);
 
-  // Filtering and search
+  // After fetching allTags, normalize tags in data
+  useEffect(() => {
+    if (!isOpen || allTags.length === 0) return;
+    setData(transactionData.map(obj => {
+      let tags = Array.isArray(obj.tags) ? obj.tags : [];
+      tags = tags.map(tag => {
+        if (typeof tag === 'string') {
+          return allTags.find(t => t.id === tag) || { id: tag, name: tag, color: '#60a5fa' };
+        }
+        if (!tag.name || !tag.color) {
+          const found = allTags.find(t => t.id === tag.id);
+          return found ? found : { ...tag, color: '#60a5fa' };
+        }
+        return tag;
+      });
+      return { ...obj, tags };
+    }));
+  }, [allTags, isOpen, transactionData]);
+
   useEffect(() => {
     if (!data.length) return;
-    let rows = data.slice(1); // exclude header
-    // Search
+    let rows = data;
     if (search.trim()) {
       const s = search.trim().toLowerCase();
-      rows = rows.filter(row => row.some(cell => cell.toLowerCase().includes(s)));
+      rows = rows.filter(row => Object.values(row).some(cell => String(cell).toLowerCase().includes(s)));
     }
-    setFilteredData([data[0], ...rows]);
+    setFilteredData(rows);
   }, [data, search]);
 
-  // Selection logic
   useEffect(() => {
     if (!filteredData.length) return;
     if (selectAll) {
-      setSelectedRows(new Set(filteredData.slice(1).map((_, i) => i)));
+      setSelectedRows(new Set(filteredData.map((_, i) => i)));
     } else {
       setSelectedRows(new Set());
     }
-    // eslint-disable-next-line
   }, [selectAll, filteredData.length]);
 
   const handleRowSelect = (idx: number) => {
@@ -93,7 +90,7 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
     if (newSet.has(idx)) newSet.delete(idx);
     else newSet.add(idx);
     setSelectedRows(newSet);
-    setSelectAll(newSet.size === filteredData.length - 1);
+    setSelectAll(newSet.size === filteredData.length);
   };
 
   const handleSelectAll = () => {
@@ -102,36 +99,44 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
 
   const handleCopy = () => {
     if (!filteredData.length) return;
-    const rows = Array.from(selectedRows).map(i => filteredData[i + 1]);
-    const csv = Papa.unparse([filteredData[0], ...rows]);
+    const rows = Array.from(selectedRows).map(i => filteredData[i]);
+    const csv = Papa.unparse(rows);
     navigator.clipboard.writeText(csv);
   };
 
   const handleDelete = () => {
     if (!filteredData.length) return;
     const toDelete = new Set(selectedRows);
-    const newRows = filteredData.slice(1).filter((_, i) => !toDelete.has(i));
-    setData([filteredData[0], ...newRows]);
+    const newRows = filteredData.filter((_, i) => !toDelete.has(i));
+    setData(newRows);
     setSelectedRows(new Set());
     setSelectAll(false);
   };
 
   const handleAddTag = () => {
-    if (!tagInput.trim() || !filteredData.length) return;
-    const tag = tagInput.trim();
-    const tagColIdx = filteredData[0].indexOf('Tags');
-    const newRows = filteredData.slice(1).map((row, i) => {
+    if (!selectedTagId || !filteredData.length) return;
+    const tagObj = allTags.find(t => t.id === selectedTagId);
+    if (!tagObj) return;
+    const newRows = data.map((row, i) => {
       if (selectedRows.has(i)) {
-        const tags = row[tagColIdx] ? row[tagColIdx].split(',').map(t => t.trim()).filter(Boolean) : [];
-        if (!tags.includes(tag)) tags.push(tag);
-        const newRow = [...row];
-        newRow[tagColIdx] = tags.join(', ');
-        return newRow;
+        let tags = Array.isArray(row.tags) ? [...row.tags] : [];
+        if (!tags.some((t: Tag) => t.id === tagObj.id)) tags.push(tagObj);
+        return { ...row, tags };
       }
       return row;
     });
-    setData([filteredData[0], ...newRows]);
-    setTagInput('');
+    setData(newRows);
+    setSelectedTagId('');
+  };
+
+  const handleRemoveTag = (rowIdx: number, tagIdToRemove: string) => {
+    const newRows = data.map((row, i) => {
+      if (i === rowIdx) {
+        return { ...row, tags: Array.isArray(row.tags) ? row.tags.filter((t: Tag) => t.id !== tagIdToRemove) : [] };
+      }
+      return row;
+    });
+    setData(newRows);
   };
 
   const handleSave = async () => {
@@ -139,19 +144,17 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
     setSaving(true);
     setSaveError(null);
     try {
-      const csv = Papa.unparse(data);
-      const tagColIdx = data[0].indexOf('Tags');
-      const tags = Array.from(new Set(data.slice(1).flatMap(row => (row[tagColIdx] || '').split(',').map(t => t.trim()).filter(Boolean))));
+      // Save to backend (update DynamoDB and S3 if needed)
       const res = await fetch('/api/transaction/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionId, csv, tags }),
+        body: JSON.stringify({ transactionId, transactionData: data }),
       });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Failed to save updated transaction');
       }
-      alert('Transaction file updated!');
+      alert('Transaction updated!');
     } catch (err: any) {
       setSaveError(err.message);
     } finally {
@@ -159,75 +162,98 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
     }
   };
 
+  const headers = data.length ? Object.keys(data[0]).filter(h => h !== 'tags') : [];
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Transaction Preview">
+      {fileName && (
+        <div className="mb-4 text-gray-700 font-semibold text-lg">{fileName}</div>
+      )}
+      <div className="flex flex-wrap gap-2 mb-2 items-center">
+        <input
+          type="text"
+          placeholder="Search..."
+          className="border px-2 py-1 rounded"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {selectedRows.size > 0 && (
+          <div className="flex gap-2 items-center bg-gray-100 px-2 py-1 rounded">
+            <span>{selectedRows.size} selected</span>
+            <select
+              className="border px-1 py-0.5 rounded text-xs"
+              value={selectedTagId}
+              onChange={e => setSelectedTagId(e.target.value)}
+            >
+              <option value="">Add tag...</option>
+              {allTags.map(tag => (
+                <option key={tag.id} value={tag.id} style={{ background: tag.color, color: '#222' }}>{tag.name}</option>
+              ))}
+            </select>
+            <button className="px-2 py-1 bg-green-600 text-white rounded text-xs" onClick={handleAddTag}>Add Tag</button>
+            <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs" onClick={handleCopy}>Copy</button>
+            <button className="px-2 py-1 bg-red-600 text-white rounded text-xs" onClick={handleDelete}>Delete</button>
+          </div>
+        )}
+      </div>
       {loading ? (
         <div className="text-gray-500">Loading...</div>
       ) : error ? (
         <div className="text-red-600">{error}</div>
-      ) : filteredData.length > 0 ? (
+      ) : (
         <>
-          <div className="flex flex-wrap gap-2 mb-2 items-center">
-            <input
-              type="text"
-              placeholder="Search..."
-              className="border px-2 py-1 rounded"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            {selectedRows.size > 0 && (
-              <div className="flex gap-2 items-center bg-gray-100 px-2 py-1 rounded">
-                <span>{selectedRows.size} selected</span>
-                <input
-                  type="text"
-                  placeholder="Add tag"
-                  className="border px-1 py-0.5 rounded text-xs"
-                  value={tagInput}
-                  onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
-                />
-                <button className="px-2 py-1 bg-green-600 text-white rounded text-xs" onClick={handleAddTag}>Add Tag</button>
-                <button className="px-2 py-1 bg-blue-600 text-white rounded text-xs" onClick={handleCopy}>Copy</button>
-                <button className="px-2 py-1 bg-red-600 text-white rounded text-xs" onClick={handleDelete}>Delete</button>
-              </div>
-            )}
-          </div>
-          <div className="overflow-x-auto max-h-[70vh]">
-            <table className="min-w-full border text-sm">
-              <thead className="sticky top-0 bg-white z-10">
-                <tr>
-                  <th className="border px-2 py-1 bg-gray-50">
-                    <input type="checkbox" checked={selectAll} onChange={handleSelectAll} />
-                  </th>
-                  {filteredData[0].map((header, colIdx) => (
-                    <th key={colIdx} className="border px-2 py-1 font-bold bg-gray-100">{header}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredData.slice(1).map((row, i) => (
-                  <tr key={i} className={selectedRows.has(i) ? 'bg-blue-50' : ''}>
-                    <td className="border px-2 py-1 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedRows.has(i)}
-                        onChange={() => handleRowSelect(i)}
-                      />
-                    </td>
-                    {row.map((cell, j) => (
-                      j === filteredData[0].length - 1
-                        ? <td key={j} className="border px-2 py-1 whitespace-nowrap">
-                            {cell.split(',').filter(Boolean).map(tag => (
-                              <span key={tag} className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded mr-1 mb-1">{tag}</span>
-                            ))}
-                          </td>
-                        : <td key={j} className="border px-2 py-1 whitespace-nowrap">{cell}</td>
+          {filteredData.length > 0 ? (
+            <div className="overflow-x-auto max-h-[70vh]">
+              <table className="min-w-full border text-sm">
+                <thead className="sticky top-0 bg-white z-10">
+                  <tr>
+                    <th className="border px-2 py-1 bg-gray-50">
+                      <input type="checkbox" checked={selectAll} onChange={handleSelectAll} />
+                    </th>
+                    {headers.map((header, colIdx) => (
+                      <th key={colIdx} className="border px-2 py-1 font-bold bg-gray-100">{header}</th>
                     ))}
+                    <th className="border px-2 py-1 font-bold bg-gray-100">Tags</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredData.map((row, i) => (
+                    <tr key={i} className={selectedRows.has(i) ? 'bg-blue-50' : ''}>
+                      <td className="border px-2 py-1 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedRows.has(i)}
+                          onChange={() => handleRowSelect(i)}
+                        />
+                      </td>
+                      {headers.map((header, j) => (
+                        <td key={j} className="border px-2 py-1 whitespace-nowrap">{row[header]}</td>
+                      ))}
+                      <td className="border px-2 py-1 whitespace-nowrap">
+                        {Array.isArray(row.tags) && row.tags.length > 0 ? row.tags.map((tag: Tag, tagIdx: number) => (
+                          <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1" style={{ background: tag.color, color: '#222' }}>
+                            {tag.name}
+                            <button
+                              type="button"
+                              className="ml-1 text-red-500 hover:text-red-700 font-bold focus:outline-none"
+                              title="Remove tag"
+                              onClick={e => { e.stopPropagation(); handleRemoveTag(i, tag.id); }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        )) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-gray-500">
+              No data to display.
+            </div>
+          )}
           <div className="flex justify-end mt-4">
             <button
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -239,8 +265,6 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
             {saveError && <span className="text-red-600 ml-4">{saveError}</span>}
           </div>
         </>
-      ) : (
-        <div className="text-gray-500">No data to display.</div>
       )}
     </Modal>
   );

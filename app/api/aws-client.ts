@@ -43,7 +43,9 @@ export const s3 = s3Client;
 export const TABLES = {
   BANKS: 'banks',
   ACCOUNTS: 'accounts',
-  BANK_STATEMENTS: 'bank-statements',
+  BANK_STATEMENTS: process.env.AWS_DYNAMODB_STATEMENTS_TABLE || 'bank-statements',
+  TRANSACTIONS: process.env.AWS_DYNAMODB_TRANSACTIONS_TABLE || 'transactions',
+  TAGS: process.env.AWS_DYNAMODB_TAGS_TABLE || 'tags',
 } as const;
 
 // S3 bucket name

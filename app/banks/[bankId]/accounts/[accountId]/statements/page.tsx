@@ -12,6 +12,7 @@ interface Statement {
   s3FileUrl: string;
   transactionHeader: string[];
   tags: string[];
+  fileName?: string;
 }
 
 export default function StatementsPage() {
@@ -30,6 +31,7 @@ export default function StatementsPage() {
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
   const [transactionPreviewOpen, setTransactionPreviewOpen] = useState(false);
   const [transactionPreviewUrl, setTransactionPreviewUrl] = useState<string | null>(null);
+  const [fileName, setFileName] = useState('');
 
   useEffect(() => {
     const fetchStatements = async () => {
@@ -76,6 +78,7 @@ export default function StatementsPage() {
       formData.append('file', file);
       formData.append('bankId', String(bankId));
       formData.append('accountId', String(accountId));
+      formData.append('fileName', fileName.trim() ? fileName.trim() : file.name);
       const res = await fetch('/api/statement/upload', {
         method: 'POST',
         body: formData,
@@ -88,11 +91,26 @@ export default function StatementsPage() {
       const newStatement = await res.json();
       setStatements(prev => [...prev, newStatement]);
       setIsModalOpen(false);
+      setFileName('');
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload statement');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleDeleteStatement = async (statementId: string, s3FileUrl: string) => {
+    if (!window.confirm('Are you sure you want to delete this statement?')) return;
+    const res = await fetch('/api/statement/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statementId, s3FileUrl }),
+    });
+    if (res.ok) {
+      setStatements(prev => prev.filter(s => s.id !== statementId));
+    } else {
+      alert('Failed to delete statement');
     }
   };
 
@@ -126,6 +144,15 @@ export default function StatementsPage() {
         <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Upload Statement">
           <form onSubmit={handleUpload} className="space-y-4">
             <div>
+              <label className="block text-sm font-medium text-gray-700">File Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Nov2024_Statement.csv"
+                className="border px-2 py-1 rounded w-full mb-2"
+                value={fileName}
+                onChange={e => setFileName(e.target.value)}
+                disabled={isUploading}
+              />
               <label className="block text-sm font-medium text-gray-700">CSV File</label>
               <input
                 type="file"
@@ -166,20 +193,26 @@ export default function StatementsPage() {
             statements.map(statement => (
               <div
                 key={statement.id}
-                className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => { 
-                  setPreviewUrl(statement.s3FileUrl); 
-                  setSelectedStatementId(statement.id); 
-                  setPreviewOpen(true); 
+                className="bg-white p-3 rounded-md shadow-sm hover:shadow-md transition-shadow cursor-pointer relative w-full max-w-xs"
+                onClick={() => {
+                  setPreviewUrl(statement.s3FileUrl);
+                  setSelectedStatementId(statement.id);
+                  setPreviewOpen(true);
                 }}
               >
-                <h3 className="text-lg font-semibold text-gray-800">Statement {statement.id}</h3>
-                <div className="text-gray-600 text-sm">{statement.s3FileUrl}</div>
+                <h3 className="text-base font-semibold text-gray-800">{statement.fileName || `Statement ${statement.id}`}</h3>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {statement.tags.map(tag => (
-                    <span key={statement.id + '-' + tag} className="px-2 py-1 bg-gray-100 text-gray-600 text-sm rounded">{tag}</span>
+                    <span key={statement.id + '-' + tag} className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">{tag}</span>
                   ))}
                 </div>
+                <button
+                  className="absolute top-2 right-2 text-red-600 hover:text-red-800 bg-white rounded-full p-1 shadow"
+                  title="Delete Statement"
+                  onClick={e => { e.stopPropagation(); handleDeleteStatement(statement.id, statement.s3FileUrl); }}
+                >
+                  &#128465;
+                </button>
               </div>
             ))
           )}
@@ -192,6 +225,7 @@ export default function StatementsPage() {
         statementId={selectedStatementId}
         bankId={statements.find(s => s.id === selectedStatementId)?.bankId || null}
         accountId={statements.find(s => s.id === selectedStatementId)?.accountId || null}
+        fileName={statements.find(s => s.id === selectedStatementId)?.fileName || ''}
       />
       {tab === 'transactions' && (
         <div>
@@ -204,15 +238,16 @@ export default function StatementsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {transactions.map(tx => (
-                <div key={tx.id} className="bg-white p-6 rounded-lg shadow-sm cursor-pointer" onClick={() => { setTransactionPreviewUrl(tx.s3FileUrl); setTransactionPreviewOpen(true); }}>
-                  <h3 className="text-lg font-semibold text-gray-800">Transaction {tx.id}</h3>
-                  <div className="text-gray-600 text-sm break-all">{tx.s3FileUrl}</div>
+                <div key={tx.id} className="bg-white p-3 rounded-md shadow-sm cursor-pointer w-full max-w-xs">
+                  <h3 className="text-base font-semibold text-gray-800">{tx.fileName || `Transaction ${tx.id}`}</h3>
                   <div className="text-xs text-gray-500 mt-2">
                     <div>Statement ID: {tx.statementId}</div>
                     <div>Rows: {tx.startRow} - {tx.endRow}</div>
                     <div>Created: {tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ''}</div>
                   </div>
-                  <a href={tx.s3FileUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-2 text-blue-600 underline" onClick={e => e.stopPropagation()}>Download CSV</a>
+                  <div className="mt-2">
+                    <button className="text-blue-600 underline" onClick={() => { setTransactionPreviewUrl(tx.id); setTransactionPreviewOpen(true); }}>View & Edit Transactions</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -220,8 +255,9 @@ export default function StatementsPage() {
           <TransactionPreviewModal
             isOpen={transactionPreviewOpen}
             onClose={() => setTransactionPreviewOpen(false)}
-            s3FileUrl={transactionPreviewUrl}
-            transactionId={transactions.find(tx => tx.s3FileUrl === transactionPreviewUrl)?.id || null}
+            transactionId={transactionPreviewUrl}
+            transactionData={transactions.find(tx => tx.id === transactionPreviewUrl)?.transactionData || []}
+            fileName={transactions.find(tx => tx.id === transactionPreviewUrl)?.fileName || ''}
           />
         </div>
       )}

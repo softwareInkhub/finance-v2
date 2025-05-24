@@ -7,30 +7,20 @@ export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const { transactionId, csv, tags } = await request.json();
-    if (!transactionId || !csv) {
+    const { transactionId, transactionData } = await request.json();
+    if (!transactionId || !transactionData) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    const key = `transactions/${transactionId}.csv`;
-    // Overwrite CSV in S3
-    await s3.send(new PutObjectCommand({
-      Bucket: S3_BUCKET,
-      Key: key,
-      Body: csv,
-      ContentType: 'text/csv',
-    }));
-    // Optionally update tags in DynamoDB
-    if (tags) {
-      await docClient.send(
-        new UpdateCommand({
-          TableName: TABLES.TRANSACTIONS || 'transactions',
-          Key: { id: transactionId },
-          UpdateExpression: 'SET #tags = :tags',
-          ExpressionAttributeNames: { '#tags': 'tags' },
-          ExpressionAttributeValues: { ':tags': tags },
-        })
-      );
-    }
+    // transactionData should have tags as an array for each row (tags: string[])
+    await docClient.send(
+      new UpdateCommand({
+        TableName: TABLES.TRANSACTIONS || 'transactions',
+        Key: { id: transactionId },
+        UpdateExpression: 'SET #transactionData = :transactionData',
+        ExpressionAttributeNames: { '#transactionData': 'transactionData' },
+        ExpressionAttributeValues: { ':transactionData': transactionData },
+      })
+    );
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error updating transaction:', error);

@@ -11,6 +11,7 @@ export default function Sidebar() {
   const menuItems = [
     { name: 'Dashboard', path: '/dashboard', icon: '📊' },
     { name: 'Banks', path: '/banks', icon: '🏦' },
+    { name: 'Tags', path: '/tags', icon: '🏷️' },
   ];
 
   return (
