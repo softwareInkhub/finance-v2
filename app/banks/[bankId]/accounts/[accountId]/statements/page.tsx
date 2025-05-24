@@ -22,6 +22,7 @@ export default function StatementsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedStatementId, setSelectedStatementId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchStatements = async () => {
@@ -127,7 +128,11 @@ export default function StatementsPage() {
             <div
               key={statement.id}
               className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => { setPreviewUrl(statement.s3FileUrl); setPreviewOpen(true); }}
+              onClick={() => { 
+                setPreviewUrl(statement.s3FileUrl); 
+                setSelectedStatementId(statement.id); 
+                setPreviewOpen(true); 
+              }}
             >
               <h3 className="text-lg font-semibold text-gray-800">Statement {statement.id}</h3>
               <div className="text-gray-600 text-sm">{statement.s3FileUrl}</div>
@@ -144,6 +149,9 @@ export default function StatementsPage() {
         isOpen={previewOpen}
         onClose={() => setPreviewOpen(false)}
         s3FileUrl={previewUrl}
+        statementId={selectedStatementId}
+        bankId={statements.find(s => s.id === selectedStatementId)?.bankId || null}
+        accountId={statements.find(s => s.id === selectedStatementId)?.accountId || null}
       />
     </div>
   );
