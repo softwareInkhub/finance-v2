@@ -1,19 +1,57 @@
 'use client';
 
+import { useState } from 'react';
+import Sidebar from './Sidebar';
+import { 
+  RiMenuLine, 
+  RiNotification3Line, 
+  RiUserLine
+} from 'react-icons/ri';
+
 export default function Navbar() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const handleSidebarItemClick = () => {
+    setIsMobileMenuOpen(false);
+  };
+
   return (
-    <nav className="bg-white shadow-sm h-16 flex items-center px-6">
-      <div className="flex-1">
-        <h1 className="text-xl font-semibold text-gray-800">Finance Manager</h1>
-      </div>
-      <div className="flex items-center space-x-4">
-        <button className="p-2 rounded-full hover:bg-gray-100">
-          <span className="text-xl">🔔</span>
+    <>
+      <nav className="h-16 flex items-center px-4 md:px-6 bg-white/60 backdrop-blur-xl border-b border-blue-100 shadow-lg rounded-b-2xl transition-all duration-300">
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="md:hidden p-2 rounded-lg hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 mr-2 transition-all duration-200 border border-transparent focus:border-blue-400 shadow-sm"
+        >
+          <RiMenuLine className="text-xl text-gray-600" />
         </button>
-        <button className="p-2 rounded-full hover:bg-gray-100">
-          <span className="text-xl">👤</span>
-        </button>
-      </div>
-    </nav>
+        <div className="flex-1">
+          <h1 className="text-lg md:text-xl font-semibold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent drop-shadow-lg select-none">
+            Brmh Fintech
+          </h1>
+        </div>
+        <div className="flex items-center space-x-2 md:space-x-4">
+          <button className="p-2 rounded-full hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 transition-colors duration-200 relative group shadow-sm">
+            <RiNotification3Line className="text-xl text-gray-600 group-hover:text-blue-600 transition-colors duration-200" />
+            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-md border-2 border-white"></span>
+          </button>
+          <button className="p-2 rounded-full hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 transition-colors duration-200 group shadow-sm">
+            <RiUserLine className="text-xl text-gray-600 group-hover:text-blue-600 transition-colors duration-200" />
+          </button>
+        </div>
+      </nav>
+      
+      {/* Mobile Sidebar */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-50">
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+          <div className="fixed inset-y-0 left-0 w-64 transform transition-transform duration-300 ease-in-out">
+            <Sidebar onItemClick={handleSidebarItemClick} />
+          </div>
+        </div>
+      )}
+    </>
   );
 } 

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Bank } from '../types/aws';
 import CreateBankModal from '../components/Modals/CreateBankModal';
+import { RiBankLine, RiAddLine, RiPriceTag3Line } from 'react-icons/ri';
 
 export default function BanksPage() {
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -63,61 +64,76 @@ export default function BanksPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Banks</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          Add Bank
-        </button>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-10 px-2 space-y-8">
+      <div className="max-w-5xl mx-auto space-y-6">
+        <div className="flex justify-between items-center mb-2">
+          <div className="flex items-center gap-2">
+            <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-2xl shadow">
+              <RiBankLine />
+            </div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Banks</h1>
+          </div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-5 py-2 rounded-lg shadow hover:scale-105 hover:shadow-lg transition-all font-semibold"
+          >
+            <RiAddLine className="text-xl" /> Add Bank
+          </button>
+        </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          <p className="font-medium">Error</p>
-          <p className="text-sm">{error}</p>
-          {error.includes('AWS configuration') && (
-            <p className="text-sm mt-2">
-              Please check your .env.local file and ensure AWS credentials are properly configured.
-            </p>
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            <p className="font-medium">Error</p>
+            <p className="text-sm">{error}</p>
+            {error.includes('AWS configuration') && (
+              <p className="text-sm mt-2">
+                Please check your .env.local file and ensure AWS credentials are properly configured.
+              </p>
+            )}
+          </div>
+        )}
+
+        <CreateBankModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onCreate={handleCreateBank}
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {banks.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-gray-500">
+              No banks added yet. Click &quot;Add Bank&quot; to get started.
+            </div>
+          ) : (
+            banks.map((bank) => (
+              <Link
+                key={bank.id}
+                href={`/banks/${bank.id}/accounts`}
+                className="relative bg-white/70 backdrop-blur-lg p-6 rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-105 hover:shadow-2xl group overflow-hidden"
+              >
+                <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-5xl pointer-events-none select-none rotate-12">
+                  <RiBankLine />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl shadow">
+                    <RiBankLine />
+                  </span>
+                  {bank.bankName}
+                </h3>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {bank.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium"
+                    >
+                      <RiPriceTag3Line className="text-blue-400" /> {tag}
+                    </span>
+                  ))}
+                </div>
+              </Link>
+            ))
           )}
         </div>
-      )}
-
-      <CreateBankModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onCreate={handleCreateBank}
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {banks.length === 0 ? (
-          <div className="col-span-full text-center py-12 text-gray-500">
-            No banks added yet. Click &quot;Add Bank&quot; to get started.
-          </div>
-        ) : (
-          banks.map((bank) => (
-            <Link
-              key={bank.id}
-              href={`/banks/${bank.id}/accounts`}
-              className="bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow"
-            >
-              <h3 className="text-lg font-semibold text-gray-800">{bank.bankName}</h3>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {bank.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2 py-1 bg-gray-100 text-gray-600 text-sm rounded"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </Link>
-          ))
-        )}
       </div>
     </div>
   );
