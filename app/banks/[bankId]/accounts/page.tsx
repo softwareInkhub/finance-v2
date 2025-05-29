@@ -71,20 +71,22 @@ export default function AccountsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-10 px-2 space-y-8">
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div className="flex justify-between items-center mb-2">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
+      <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
+        <div className="flex flex-row justify-between items-center gap-2 sm:gap-4 mb-2">
           <div className="flex items-center gap-2">
-            <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-2xl shadow">
+            <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl sm:text-2xl shadow">
               <RiAccountPinCircleLine />
             </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Accounts</h1>
+            <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Accounts</h1>
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-5 py-2 rounded-lg shadow hover:scale-105 hover:shadow-lg transition-all font-semibold"
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 sm:px-5 py-2 rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold w-auto"
           >
-            <RiAddLine className="text-xl" /> Add Account
+            <RiAddLine className="text-lg sm:text-xl" />
+            <span className="block sm:hidden">Add</span>
+            <span className="hidden sm:block">Add Account</span>
           </button>
         </div>
         {error && <div className="text-red-600 mb-2">{error}</div>}
@@ -134,18 +136,18 @@ export default function AccountsPage() {
                 disabled={isLoading}
               />
             </div>
-            <div className="flex justify-end space-x-3">
+            <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 w-full sm:w-auto"
                 disabled={isLoading}
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg shadow hover:scale-105 hover:shadow-lg transition-all font-semibold disabled:opacity-50"
+                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold disabled:opacity-50 w-full sm:w-auto"
                 disabled={isLoading}
               >
                 {isLoading ? "Creating..." : "Create"}
@@ -153,9 +155,9 @@ export default function AccountsPage() {
             </div>
           </form>
         </Modal>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
           {accounts.length === 0 ? (
-            <div className="col-span-full text-center py-12 text-gray-500">
+            <div className="col-span-full text-center py-8 sm:py-12 text-gray-500">
               No accounts added yet. Click &quot;Add Account&quot; to get started.
             </div>
           ) : (
@@ -163,21 +165,21 @@ export default function AccountsPage() {
               <Link
                 key={account.id}
                 href={`/banks/${bankId}/accounts/${account.id}/statements`}
-                className="relative bg-white/70 backdrop-blur-lg p-6 rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-105 hover:shadow-2xl group overflow-hidden"
+                className="relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
               >
-                <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-5xl pointer-events-none select-none rotate-12">
+                <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-4xl sm:text-5xl pointer-events-none select-none rotate-12">
                   <RiAccountPinCircleLine />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                  <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl shadow">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-lg sm:text-xl shadow">
                     <RiAccountPinCircleLine />
                   </span>
                   {account.accountHolderName}
                 </h3>
-                <div className="text-gray-600 text-sm">{account.accountNumber} | {account.ifscCode}</div>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="text-gray-600 text-sm mt-2">{account.accountNumber} | {account.ifscCode}</div>
+                <div className="mt-3 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2">
                   {account.tags.map(tag => (
-                    <span key={tag} className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium">
+                    <span key={tag} className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium">
                       <RiPriceTag3Line className="text-blue-400" /> {tag}
                     </span>
                   ))}

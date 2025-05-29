@@ -132,134 +132,86 @@ export default function StatementsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-10 px-2 space-y-8">
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div className="flex gap-4 border-b mb-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
+      <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
+        <div className="flex gap-2 sm:gap-4 border-b mb-4 overflow-x-auto">
           <button
-            className={`px-4 py-2 font-semibold transition-all ${tab === 'statements' ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/40 rounded-t' : 'text-gray-600 hover:bg-gray-100 rounded-t'}`}
+            className={`px-3 sm:px-4 py-2 font-semibold transition-all whitespace-nowrap ${tab === 'statements' ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/40 rounded-t' : 'text-gray-600 hover:bg-gray-100 rounded-t'}`}
             onClick={() => setTab('statements')}
           >
             <span className="inline-flex items-center gap-1"><RiFileList3Line /> Statements</span>
           </button>
           <button
-            className={`px-4 py-2 font-semibold transition-all ${tab === 'transactions' ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/40 rounded-t' : 'text-gray-600 hover:bg-gray-100 rounded-t'}`}
+            className={`px-3 sm:px-4 py-2 font-semibold transition-all whitespace-nowrap ${tab === 'transactions' ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/40 rounded-t' : 'text-gray-600 hover:bg-gray-100 rounded-t'}`}
             onClick={() => setTab('transactions')}
           >
             <span className="inline-flex items-center gap-1"><RiExchangeDollarLine /> Transactions</span>
           </button>
         </div>
-        <div className="flex justify-between items-center">
+        
+        <div className="flex flex-row justify-between items-center gap-2 sm:gap-4 mb-2">
           <div className="flex items-center gap-2">
-            <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-2xl shadow">
+            <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl sm:text-2xl shadow">
               <RiFileList3Line />
             </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Statements</h1>
+            <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Statements</h1>
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-5 py-2 rounded-lg shadow hover:scale-105 hover:shadow-lg transition-all font-semibold"
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 sm:px-5 py-2 rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold w-auto"
           >
-            <RiUpload2Line className="text-xl" /> Upload Statement
+            <RiUpload2Line className="text-lg sm:text-xl" />
+            <span className="hidden sm:block">Upload Statement</span>
           </button>
         </div>
         {error && <div className="text-red-600 mb-2">{error}</div>}
+        
         {tab === 'statements' && (
-          <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Upload Statement">
-            <form onSubmit={handleUpload} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">File Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Nov2024_Statement.csv"
-                  className="border px-3 py-2 rounded-lg w-full mb-2 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                  value={fileName}
-                  onChange={e => setFileName(e.target.value)}
-                  disabled={isUploading}
-                />
-                <label className="block text-sm font-medium text-gray-700">CSV File</label>
-                <input
-                  type="file"
-                  accept=".csv"
-                  ref={fileInputRef}
-                  className="mt-1 block w-full"
-                  required
-                  disabled={isUploading}
-                />
-              </div>
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-                  disabled={isUploading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg shadow hover:scale-105 hover:shadow-lg transition-all font-semibold disabled:opacity-50"
-                  disabled={isUploading}
-                >
-                  <RiUpload2Line /> {isUploading ? "Uploading..." : "Upload"}
-                </button>
-              </div>
-            </form>
-          </Modal>
-        )}
-        {tab === 'statements' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
             {statements.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-gray-500">
+              <div className="col-span-full text-center py-8 sm:py-12 text-gray-500">
                 No statements uploaded yet. Click &quot;Upload Statement&quot; to get started.
               </div>
             ) : (
               statements.map(statement => (
                 <div
                   key={statement.id}
-                  className="relative bg-white/70 backdrop-blur-lg p-6 rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-105 hover:shadow-2xl group overflow-hidden cursor-pointer w-full max-w-xs"
+                  className="relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden cursor-pointer"
                   onClick={() => {
                     setPreviewUrl(statement.s3FileUrl);
                     setSelectedStatementId(statement.id);
                     setPreviewOpen(true);
                   }}
                 >
-                  <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-5xl pointer-events-none select-none rotate-12">
+                  <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-4xl sm:text-5xl pointer-events-none select-none rotate-12">
                     <RiFileList3Line />
                   </div>
-                  <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
-                    <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl shadow">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-lg sm:text-xl shadow">
                       <RiFileList3Line />
                     </span>
                     {statement.fileName || `Statement ${statement.id}`}
                   </h3>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-3 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2">
                     {statement.tags.map(tag => (
-                      <span key={statement.id + '-' + tag} className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium">
+                      <span key={statement.id + '-' + tag} className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium">
                         <RiPriceTag3Line className="text-blue-400" /> {tag}
                       </span>
                     ))}
                   </div>
                   <button
-                    className="absolute top-2 right-2 text-red-600 hover:text-red-800 bg-white rounded-full p-2 shadow transition-all hover:scale-110"
+                    className="absolute top-2 right-2 text-red-600 hover:text-red-800 bg-white rounded-full p-1.5 sm:p-2 shadow transition-all hover:scale-110"
                     title="Delete Statement"
                     onClick={e => { e.stopPropagation(); handleDeleteStatement(statement.id, statement.s3FileUrl); }}
                   >
-                    <RiDeleteBin6Line size={18} />
+                    <RiDeleteBin6Line size={16} className="sm:text-lg" />
                   </button>
                 </div>
               ))
             )}
           </div>
         )}
-        <StatementPreviewModal
-          isOpen={previewOpen}
-          onClose={() => setPreviewOpen(false)}
-          s3FileUrl={previewUrl}
-          statementId={selectedStatementId}
-          bankId={statements.find(s => s.id === selectedStatementId)?.bankId || null}
-          accountId={statements.find(s => s.id === selectedStatementId)?.accountId || null}
-          fileName={statements.find(s => s.id === selectedStatementId)?.fileName || ''}
-        />
+        
         {tab === 'transactions' && (
           <div>
             {loadingTransactions ? (
@@ -269,14 +221,14 @@ export default function StatementsPage() {
             ) : transactions.length === 0 ? (
               <div className="text-gray-500">No transactions found for this account.</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
                 {transactions.map(tx => (
-                  <div key={tx.id} className="relative bg-white/70 backdrop-blur-lg p-6 rounded-2xl shadow-lg border border-purple-100 transition-transform duration-200 hover:scale-105 hover:shadow-2xl group overflow-hidden cursor-pointer w-full max-w-xs">
-                    <div className="absolute top-4 right-4 opacity-5 text-purple-500 text-5xl pointer-events-none select-none rotate-12">
+                  <div key={tx.id} className="relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-purple-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden cursor-pointer">
+                    <div className="absolute top-4 right-4 opacity-5 text-purple-500 text-4xl sm:text-5xl pointer-events-none select-none rotate-12">
                       <RiExchangeDollarLine />
                     </div>
-                    <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
-                      <span className="bg-purple-100 p-2 rounded-full text-purple-600 text-xl shadow">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-800 flex items-center gap-2">
+                      <span className="bg-purple-100 p-2 rounded-full text-purple-600 text-lg sm:text-xl shadow">
                         <RiExchangeDollarLine />
                       </span>
                       {tx.fileName || `Transaction ${tx.id}`}
@@ -286,7 +238,7 @@ export default function StatementsPage() {
                       <div>Rows: {tx.startRow} - {tx.endRow}</div>
                       <div>Created: {tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ''}</div>
                     </div>
-                    <div className="mt-4">
+                    <div className="mt-3 sm:mt-4">
                       <button className="flex items-center gap-1 text-blue-600 underline hover:text-blue-800 transition-all" onClick={() => { setTransactionPreviewUrl(tx.id); setTransactionPreviewOpen(true); }}>
                         <RiFileList3Line /> View & Edit Transactions
                       </button>
@@ -295,15 +247,26 @@ export default function StatementsPage() {
                 ))}
               </div>
             )}
-            <TransactionPreviewModal
-              isOpen={transactionPreviewOpen}
-              onClose={() => setTransactionPreviewOpen(false)}
-              transactionId={transactionPreviewUrl}
-              transactionData={transactions.find(tx => tx.id === transactionPreviewUrl)?.transactionData || []}
-              fileName={transactions.find(tx => tx.id === transactionPreviewUrl)?.fileName || ''}
-            />
           </div>
         )}
+        
+        <StatementPreviewModal
+          isOpen={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          s3FileUrl={previewUrl}
+          statementId={selectedStatementId}
+          bankId={statements.find(s => s.id === selectedStatementId)?.bankId || null}
+          accountId={statements.find(s => s.id === selectedStatementId)?.accountId || null}
+          fileName={statements.find(s => s.id === selectedStatementId)?.fileName || ''}
+        />
+        
+        <TransactionPreviewModal
+          isOpen={transactionPreviewOpen}
+          onClose={() => setTransactionPreviewOpen(false)}
+          transactionId={transactionPreviewUrl}
+          transactionData={transactions.find(tx => tx.id === transactionPreviewUrl)?.transactionData || []}
+          fileName={transactions.find(tx => tx.id === transactionPreviewUrl)?.fileName || ''}
+        />
       </div>
     </div>
   );

@@ -64,25 +64,27 @@ export default function BanksPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-10 px-2 space-y-8">
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div className="flex justify-between items-center mb-2">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
+      <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
+        <div className="flex flex-row justify-between items-center gap-2 sm:gap-4 mb-2">
           <div className="flex items-center gap-2">
-            <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-2xl shadow">
+            <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl sm:text-2xl shadow">
               <RiBankLine />
             </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Banks</h1>
+            <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Banks</h1>
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-5 py-2 rounded-lg shadow hover:scale-105 hover:shadow-lg transition-all font-semibold"
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 sm:px-5 py-2 rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold w-auto"
           >
-            <RiAddLine className="text-xl" /> Add Bank
+            <RiAddLine className="text-lg sm:text-xl" />
+            <span className="block sm:hidden">Add</span>
+            <span className="hidden sm:block">Add Bank</span>
           </button>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-3 sm:px-4 py-3 rounded-lg">
             <p className="font-medium">Error</p>
             <p className="text-sm">{error}</p>
             {error.includes('AWS configuration') && (
@@ -99,9 +101,9 @@ export default function BanksPage() {
           onCreate={handleCreateBank}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
           {banks.length === 0 ? (
-            <div className="col-span-full text-center py-12 text-gray-500">
+            <div className="col-span-full text-center py-8 sm:py-12 text-gray-500">
               No banks added yet. Click &quot;Add Bank&quot; to get started.
             </div>
           ) : (
@@ -109,22 +111,22 @@ export default function BanksPage() {
               <Link
                 key={bank.id}
                 href={`/banks/${bank.id}/accounts`}
-                className="relative bg-white/70 backdrop-blur-lg p-6 rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-105 hover:shadow-2xl group overflow-hidden"
+                className="relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
               >
-                <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-5xl pointer-events-none select-none rotate-12">
+                <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-4xl sm:text-5xl pointer-events-none select-none rotate-12">
                   <RiBankLine />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                  <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl shadow">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-800 flex items-center gap-2">
+                  <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-lg sm:text-xl shadow">
                     <RiBankLine />
                   </span>
                   {bank.bankName}
                 </h3>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-3 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2">
                   {bank.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium"
+                      className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium"
                     >
                       <RiPriceTag3Line className="text-blue-400" /> {tag}
                     </span>

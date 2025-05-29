@@ -102,21 +102,23 @@ export default function TagsPage() {
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Tag Management</h1>
         </div>
-        <form onSubmit={handleAddTag} className="flex gap-2 mb-6 bg-white/70 backdrop-blur-lg p-4 rounded-xl shadow border border-blue-100">
-          <input
-            type="text"
-            placeholder="Tag name"
-            className="border border-gray-200 px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-200 outline-none transition-all w-40"
-            value={newTag.name}
-            onChange={e => setNewTag({ ...newTag, name: e.target.value })}
-          />
-          <input
-            type="color"
-            value={newTag.color}
-            onChange={e => setNewTag({ ...newTag, color: e.target.value })}
-            className="w-10 h-10 p-1 rounded-lg border border-gray-200 cursor-pointer"
-          />
-          <button type="submit" className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-5 py-2 rounded-lg shadow hover:scale-105 hover:shadow-lg transition-all font-semibold">Add Tag</button>
+        <form onSubmit={handleAddTag} className="flex flex-row gap-2 mb-6 bg-white/70 backdrop-blur-lg p-4 rounded-xl shadow border border-blue-100 items-center">
+          <div className="flex flex-1 gap-2">
+            <input
+              type="text"
+              placeholder="Tag name"
+              className="border border-gray-200 px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-200 outline-none transition-all w-64"
+              value={newTag.name}
+              onChange={e => setNewTag({ ...newTag, name: e.target.value })}
+            />
+            <input
+              type="color"
+              value={newTag.color}
+              onChange={e => setNewTag({ ...newTag, color: e.target.value })}
+              className="w-10 h-10 p-1 rounded-lg border border-gray-200 cursor-pointer"
+            />
+          </div>
+          <button type="submit" className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-5 py-2 rounded-lg shadow hover:scale-105 hover:shadow-lg transition-all font-semibold whitespace-nowrap ml-auto">Add Tag</button>
         </form>
         {error && <div className="text-red-600 mb-2">{error}</div>}
         {loading ? (
