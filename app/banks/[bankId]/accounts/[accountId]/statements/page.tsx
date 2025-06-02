@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Modal from "../../../../../components/Modals/Modal";
 import StatementPreviewModal from '../../../../../components/Modals/StatementPreviewModal';
 import TransactionPreviewModal from '../../../../../components/Modals/TransactionPreviewModal';
-import { RiFileList3Line, RiUpload2Line, RiDeleteBin6Line, RiPriceTag3Line, RiExchangeDollarLine } from 'react-icons/ri';
+import { RiFileList3Line, RiUpload2Line, RiDeleteBin6Line, RiPriceTag3Line, RiExchangeDollarLine, RiBarChart2Line } from 'react-icons/ri';
 
 interface Statement {
   id: string;
@@ -49,6 +49,8 @@ export default function StatementsPage() {
   const [transactionPreviewOpen, setTransactionPreviewOpen] = useState(false);
   const [transactionPreviewUrl, setTransactionPreviewUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState('');
+  const [showConsolidated, setShowConsolidated] = useState(false);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     const fetchStatements = async () => {
@@ -131,8 +133,62 @@ export default function StatementsPage() {
     }
   };
 
+  // Consolidated transaction data
+  // Flatten all transactionData rows from all transactions
+  const allRows: Record<string, string | Tag[] | undefined>[] = transactions.flatMap(tx => Array.isArray(tx.transactionData) ? tx.transactionData : []);
+  const headers = allRows.length > 0 ? Object.keys(allRows[0]) : [];
+  const filteredRows = search.trim()
+    ? allRows.filter(row =>
+        headers.some(h => {
+          const v = row[h];
+          if (Array.isArray(v)) return v.map(String).join(', ').toLowerCase().includes(search.trim().toLowerCase());
+          return String(v ?? '').toLowerCase().includes(search.trim().toLowerCase());
+        })
+      )
+    : allRows;
+
+  // Try to find the amount column (case-insensitive, fallback to first numeric column)
+  let amountCol = headers.find(h => h.toLowerCase().includes('amount'));
+  if (!amountCol && headers.length > 0 && filteredRows.length > 0) {
+    // Try to find the first column with at least one numeric value
+    for (const h of headers) {
+      if (filteredRows.some(row => {
+        const v = row[h];
+        return typeof v === 'string' && !isNaN(parseFloat(v.replace(/,/g, '')));
+      })) {
+        amountCol = h;
+        break;
+      }
+    }
+  }
+  const consolidated = (() => {
+    if (!filteredRows.length) return { count: 0, total: 0, min: 0, max: 0, avg: 0, noAmount: true };
+    let total = 0, min = Infinity, max = -Infinity, count = 0;
+    if (!amountCol) {
+      return { count: filteredRows.length, total: 0, min: 0, max: 0, avg: 0, noAmount: true };
+    }
+    filteredRows.forEach(row => {
+      const amtRaw = row[amountCol!];
+      const amt = typeof amtRaw === 'string' ? parseFloat(amtRaw.replace(/,/g, '')) : NaN;
+      if (!isNaN(amt)) {
+        total += amt;
+        min = Math.min(min, amt);
+        max = Math.max(max, amt);
+        count++;
+      }
+    });
+    return {
+      count: filteredRows.length,
+      total,
+      min: isFinite(min) ? min : 0,
+      max: isFinite(max) ? max : 0,
+      avg: count ? total / count : 0,
+      noAmount: false,
+    };
+  })();
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-10 px-2 space-y-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-10 px-2 space-y-8 relative">
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex gap-4 border-b mb-4">
           <button
@@ -305,6 +361,86 @@ export default function StatementsPage() {
           </div>
         )}
       </div>
+      {/* Floating consolidated data button */}
+      <button
+        className="fixed bottom-8 right-8 z-50 bg-gradient-to-br from-blue-500 to-purple-500 text-white rounded-full shadow-lg w-12 h-12 flex items-center justify-center text-2xl hover:scale-110 hover:shadow-2xl transition-all"
+        title="Show Consolidated Data"
+        onClick={() => setShowConsolidated(true)}
+      >
+        <RiBarChart2Line />
+      </button>
+      {/* Consolidated Data Modal */}
+      {showConsolidated && (
+        <Modal isOpen={showConsolidated} onClose={() => setShowConsolidated(false)} title="Consolidated Transaction Data">
+          <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <RiExchangeDollarLine className="text-blue-500" />
+              <span className="text-lg font-semibold">Total Transactions:</span>
+              <span className="text-gray-800">{consolidated.count}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <RiExchangeDollarLine className="text-green-500" />
+              <span className="text-lg font-semibold">Total Amount:</span>
+              <span className="text-gray-800">₹{consolidated.total.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center gap-2 text-md">
+              <span className="font-medium">Min:</span> <span className="text-gray-700">₹{consolidated.min.toLocaleString()}</span>
+              <span className="font-medium ml-4">Max:</span> <span className="text-gray-700">₹{consolidated.max.toLocaleString()}</span>
+              <span className="font-medium ml-4">Average:</span> <span className="text-gray-700">₹{consolidated.avg.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+          {consolidated.noAmount && filteredRows.length > 0 && (
+            <div className="text-yellow-600 text-xs mb-2">No numeric 'amount' column found. Showing only row count. Please check your statement headers.</div>
+          )}
+          <div className="mb-2 flex items-center gap-2">
+            <input
+              type="text"
+              className="border px-2 py-1 rounded w-full max-w-xs"
+              placeholder="Search transactions..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            <span className="text-xs text-gray-400">{filteredRows.length} rows</span>
+          </div>
+          {filteredRows.length > 0 ? (
+            <div className="overflow-x-scroll mt-2 max-w-full" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <table className="min-w-full border text-sm whitespace-nowrap">
+                <thead>
+                  <tr>
+                    <th className="border px-2 py-1 bg-gray-50 font-semibold">S. No.</th>
+                    {headers.map(header => (
+                      <th key={header} className="border px-2 py-1 bg-gray-50 font-semibold">{header}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row, i) => (
+                    <tr key={i}>
+                      <td className="border px-2 py-1 text-center">{i + 1}</td>
+                      {headers.map(header => (
+                        <td key={header} className="border px-2 py-1">{
+                          Array.isArray(row[header])
+                            ? (Array.isArray(row[header]) && row[header].length > 0 && typeof row[header][0] === 'object' && 'name' in row[header][0] && 'color' in row[header][0]
+                                ? (row[header] as Tag[]).map((tag, tagIdx) => (
+                                    <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1" style={{ background: tag.color, color: '#222' }}>
+                                      {tag.name}
+                                    </span>
+                                  ))
+                                : (row[header] as any[]).map(String).join(', ')
+                              )
+                            : String(row[header] ?? '')
+                        }</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-gray-500 p-4">No transaction data available.</div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 } 
