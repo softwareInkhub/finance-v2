@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { RiEdit2Line } from 'react-icons/ri';
 import { FiDownload } from 'react-icons/fi';
+import { RiPriceTag3Line } from 'react-icons/ri';
 
 interface Transaction {
   id: string;
@@ -42,6 +43,12 @@ export default function SuperBankPage() {
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
+
+  const [allTags, setAllTags] = useState<any[]>([]);
+  const [selectedTagId, setSelectedTagId] = useState<string>("");
+  const [tagging, setTagging] = useState(false);
+  const [tagError, setTagError] = useState<string | null>(null);
+  const [tagSuccess, setTagSuccess] = useState<string | null>(null);
 
   // Fetch all transactions
   useEffect(() => {
@@ -90,6 +97,13 @@ export default function SuperBankPage() {
         );
         setBankMappings(mappings);
       });
+  }, []);
+
+  // Fetch all tags
+  useEffect(() => {
+    fetch('/api/tags')
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setAllTags(data); else setAllTags([]); });
   }, []);
 
   // Helper: get mapped data for a transaction
@@ -238,6 +252,66 @@ export default function SuperBankPage() {
     a.download = "super-bank-selected.csv";
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Tagging logic
+  const handleAddTag = async () => {
+    setTagging(true);
+    setTagError(null);
+    setTagSuccess(null);
+    if (!selectedTagId) { setTagging(false); return; }
+    const tagObj = allTags.find(t => t.id === selectedTagId);
+    if (!tagObj) { setTagging(false); return; }
+    // Group selected rows by transactionId
+    const txMap: { [txId: string]: { tx: Transaction, rowIndexes: number[] } } = {};
+    let rowIdx = 0;
+    transactions.forEach((tx) => {
+      if (tx.transactionData && Array.isArray(tx.transactionData)) {
+        tx.transactionData.forEach((row: any, i: number) => {
+          if (selectedRows.has(rowIdx)) {
+            if (!txMap[tx.id]) txMap[tx.id] = { tx, rowIndexes: [] };
+            txMap[tx.id].rowIndexes.push(i);
+          }
+          rowIdx++;
+        });
+      }
+    });
+    try {
+      await Promise.all(Object.values(txMap).map(async ({ tx, rowIndexes }) => {
+        if (!tx.transactionData) return;
+        const newData = tx.transactionData.map((row: any, i: number) => {
+          if (rowIndexes.includes(i)) {
+            const tags = Array.isArray(row.tags) ? [...row.tags] : [];
+            if (!tags.some((t: any) => t.id === tagObj.id)) tags.push(tagObj);
+            return { ...row, tags };
+          }
+          return row;
+        });
+        await fetch('/api/transaction/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transactionId: tx.id, transactionData: newData })
+        });
+      }));
+      setTagSuccess('Tag added!');
+      setSelectedTagId("");
+      setSelectedRows(new Set());
+      setTimeout(() => setTagSuccess(null), 1500);
+      // Optionally, refetch transactions to update UI
+      setLoading(true);
+      fetch("/api/transactions/all")
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) setTransactions(data);
+          else setError(data.error || "Failed to fetch transactions");
+        })
+        .catch(() => setError("Failed to fetch transactions"))
+        .finally(() => setLoading(false));
+    } catch (e) {
+      setTagError('Failed to add tag');
+    } finally {
+      setTagging(false);
+    }
   };
 
   return (
@@ -400,6 +474,31 @@ export default function SuperBankPage() {
             Download
           </button>
         </div>
+        {/* Tagging controls above table */}
+        {selectedRows.size > 0 && (
+          <div className="flex gap-2 items-center mb-2 bg-gray-50 px-3 py-2 rounded shadow">
+            <span>{selectedRows.size} selected</span>
+            <select
+              className="border px-2 py-1 rounded text-xs"
+              value={selectedTagId}
+              onChange={e => setSelectedTagId(e.target.value)}
+            >
+              <option value="">Add tag...</option>
+              {allTags.map(tag => (
+                <option key={tag.id} value={tag.id} style={{ background: tag.color, color: '#222' }}>{tag.name}</option>
+              ))}
+            </select>
+            <button
+              className="px-3 py-1 bg-green-600 text-white rounded text-xs font-semibold disabled:opacity-50"
+              onClick={handleAddTag}
+              disabled={tagging || !selectedTagId}
+            >
+              Add Tag
+            </button>
+            {tagError && <span className="text-red-600 ml-2">{tagError}</span>}
+            {tagSuccess && <span className="text-green-600 ml-2">{tagSuccess}</span>}
+          </div>
+        )}
         {loading ? (
           <div className="text-gray-500">Loading transactions...</div>
         ) : error ? (
@@ -433,15 +532,15 @@ export default function SuperBankPage() {
                     <td className="border px-2 py-1 text-center">{idx + 1}</td>
                     {superHeader.map((sh) => (
                       <td key={sh} className="border px-2 py-1">
-                        {Array.isArray(row[sh])
-                          ? row[sh].map((item: any, i: number) =>
-                              typeof item === 'object' && item !== null
-                                ? item.name || JSON.stringify(item)
-                                : String(item)
-                            ).join(', ')
-                          : typeof row[sh] === 'object' && row[sh] !== null
-                            ? row[sh].name || JSON.stringify(row[sh])
-                            : row[sh]}
+                        {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
+                          <div className="flex flex-wrap gap-1">
+                            {row[sh].map((tag: any, tagIdx: number) => (
+                              <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1" style={{ background: tag.color, color: '#222' }}>
+                                <RiPriceTag3Line className="inline mr-1" />{tag.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : Array.isArray(row[sh]) ? row[sh].join(', ') : typeof row[sh] === 'object' && row[sh] !== null ? row[sh].name || JSON.stringify(row[sh]) : row[sh]}
                       </td>
                     ))}
                   </tr>

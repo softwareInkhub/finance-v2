@@ -267,6 +267,54 @@ export default function StatementsPage() {
           transactionData={transactions.find(tx => tx.id === transactionPreviewUrl)?.transactionData || []}
           fileName={transactions.find(tx => tx.id === transactionPreviewUrl)?.fileName || ''}
         />
+
+        {/* Upload Statement Modal */}
+        {isModalOpen && (
+          <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Upload Statement">
+            <form onSubmit={handleUpload} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">File Name</label>
+                <input
+                  type="text"
+                  value={fileName}
+                  onChange={e => setFileName(e.target.value)}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2"
+                  placeholder="Optional: Enter a file name"
+                  disabled={isUploading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">CSV File</label>
+                <input
+                  type="file"
+                  accept=".csv"
+                  ref={fileInputRef}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2"
+                  required
+                  disabled={isUploading}
+                />
+              </div>
+              {error && <div className="text-red-600 mb-2">{error}</div>}
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  onClick={() => setIsModalOpen(false)}
+                  disabled={isUploading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  disabled={isUploading}
+                >
+                  {isUploading ? 'Uploading...' : 'Upload'}
+                </button>
+              </div>
+            </form>
+          </Modal>
+        )}
       </div>
     </div>
   );
