@@ -7,12 +7,21 @@ import {
   RiNotification3Line, 
   RiUserLine
 } from 'react-icons/ri';
+import { useRouter } from 'next/navigation';
 
 export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const router = useRouter();
 
   const handleSidebarItemClick = () => {
     setIsMobileMenuOpen(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('isLoggedIn');
+    setShowProfileMenu(false);
+    router.push('/login-signup');
   };
 
   return (
@@ -34,9 +43,24 @@ export default function Navbar() {
             <RiNotification3Line className="text-xl text-gray-600 group-hover:text-blue-600 transition-colors duration-200" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-md border-2 border-white"></span>
           </button>
-          <button className="p-2 rounded-full hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 transition-colors duration-200 group shadow-sm">
-            <RiUserLine className="text-xl text-gray-600 group-hover:text-blue-600 transition-colors duration-200" />
-          </button>
+          <div className="relative">
+            <button
+              className="p-2 rounded-full hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 transition-colors duration-200 group shadow-sm"
+              onClick={() => setShowProfileMenu((v) => !v)}
+            >
+              <RiUserLine className="text-xl text-gray-600 group-hover:text-blue-600 transition-colors duration-200" />
+            </button>
+            {showProfileMenu && (
+              <div className="absolute right-0 mt-2 w-32 bg-white border border-gray-200 rounded shadow-lg z-50">
+                <button
+                  className="w-full text-left px-4 py-2 hover:bg-blue-50 text-red-600 font-semibold rounded"
+                  onClick={handleLogout}
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
       

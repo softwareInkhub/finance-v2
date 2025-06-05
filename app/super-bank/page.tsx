@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { RiEdit2Line } from 'react-icons/ri';
 import { FiDownload } from 'react-icons/fi';
 import { RiPriceTag3Line } from 'react-icons/ri';
@@ -56,6 +56,10 @@ export default function SuperBankPage() {
   const [showHeaderSection, setShowHeaderSection] = useState(false);
 
   const [tagFilters, setTagFilters] = useState<string[]>([]);
+
+  const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [tagCreateMsg, setTagCreateMsg] = useState<string | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   // Fetch all transactions
   useEffect(() => {
@@ -131,6 +135,49 @@ export default function SuperBankPage() {
         setTotalAccounts(accountCount);
       });
   }, []);
+
+  // Detect text selection in table
+  useEffect(() => {
+    const handleMouseUp = (e: MouseEvent) => {
+      const sel = window.getSelection();
+      if (sel && sel.toString().trim() && tableRef.current && tableRef.current.contains(sel.anchorNode)) {
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        setSelection({
+          text: sel.toString().trim(),
+          x: rect.left + window.scrollX,
+          y: rect.bottom + window.scrollY,
+        });
+      } else {
+        setSelection(null);
+      }
+    };
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
+  }, []);
+
+  // Create tag from selection
+  const handleCreateTagFromSelection = async () => {
+    if (!selection?.text) return;
+    setTagCreateMsg(null);
+    try {
+      const res = await fetch("/api/tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: selection.text }),
+      });
+      if (!res.ok) throw new Error("Failed to create tag");
+      setTagCreateMsg("Tag created!");
+      setSelection(null);
+      // Refresh tags
+      const tagsRes = await fetch('/api/tags');
+      const tags = await tagsRes.json();
+      setAllTags(Array.isArray(tags) ? tags : []);
+    } catch {
+      setTagCreateMsg("Failed to create tag");
+    }
+    setTimeout(() => setTagCreateMsg(null), 1500);
+  };
 
   // Helper: get mapped data for a transaction
   function getMappedRow(tx: Transaction) {
@@ -590,56 +637,74 @@ export default function SuperBankPage() {
             {tagSuccess && <span className="text-green-600 ml-2">{tagSuccess}</span>}
           </div>
         )}
-        {loading ? (
-          <div className="text-gray-500">Loading transactions...</div>
-        ) : error ? (
-          <div className="text-red-600">{error}</div>
-        ) : mappedRows.length === 0 ? (
-          <div className="text-gray-500">No mapped transactions found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border text-sm bg-white/80 rounded-xl shadow">
-              <thead>
-                <tr>
-                  <th className="border px-2 py-1 bg-gray-100">
-                    <input type="checkbox" checked={selectAll} onChange={handleSelectAll} />
-                  </th>
-                  <th className="border px-2 py-1 font-bold bg-gray-100">#</th>
-                  {superHeader.map((sh) => (
-                    <th key={sh} className="border px-2 py-1 font-bold bg-gray-100">{sh}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row, idx) => (
-                  <tr key={idx}>
-                    <td className="border px-2 py-1 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedRows.has(idx)}
-                        onChange={() => handleRowSelect(idx)}
-                      />
-                    </td>
-                    <td className="border px-2 py-1 text-center">{idx + 1}</td>
+        {/* Table and selection logic */}
+        <div ref={tableRef} className="overflow-x-auto relative">
+          {/* Floating create tag button */}
+          {selection && (
+            <button
+              style={{ position: 'absolute', left: selection.x, top: selection.y + 8, zIndex: 1000 }}
+              className="px-3 py-1 bg-blue-600 text-white rounded shadow font-semibold text-xs hover:bg-blue-700 transition-all"
+              onClick={handleCreateTagFromSelection}
+            >
+              + Create Tag from Selection
+            </button>
+          )}
+          {tagCreateMsg && (
+            <div className="absolute left-1/2 top-2 -translate-x-1/2 bg-green-100 text-green-800 px-4 py-2 rounded shadow text-sm z-50">
+              {tagCreateMsg}
+            </div>
+          )}
+          {loading ? (
+            <div className="text-gray-500">Loading transactions...</div>
+          ) : error ? (
+            <div className="text-red-600">{error}</div>
+          ) : mappedRows.length === 0 ? (
+            <div className="text-gray-500">No mapped transactions found.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border text-sm bg-white/80 rounded-xl shadow">
+                <thead>
+                  <tr>
+                    <th className="border px-2 py-1 bg-gray-100">
+                      <input type="checkbox" checked={selectAll} onChange={handleSelectAll} />
+                    </th>
+                    <th className="border px-2 py-1 font-bold bg-gray-100">#</th>
                     {superHeader.map((sh) => (
-                      <td key={sh} className="border px-2 py-1">
-                        {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
-                          <div className="flex flex-wrap gap-1">
-                            {row[sh].map((tag: any, tagIdx: number) => (
-                              <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1" style={{ background: tag.color, color: '#222' }}>
-                                <RiPriceTag3Line className="inline mr-1" />{tag.name}
-                              </span>
-                            ))}
-                          </div>
-                        ) : Array.isArray(row[sh]) ? row[sh].join(', ') : typeof row[sh] === 'object' && row[sh] !== null ? row[sh].name || JSON.stringify(row[sh]) : row[sh]}
-                      </td>
+                      <th key={sh} className="border px-2 py-1 font-bold bg-gray-100">{sh}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {filteredRows.map((row, idx) => (
+                    <tr key={idx}>
+                      <td className="border px-2 py-1 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedRows.has(idx)}
+                          onChange={() => handleRowSelect(idx)}
+                        />
+                      </td>
+                      <td className="border px-2 py-1 text-center">{idx + 1}</td>
+                      {superHeader.map((sh) => (
+                        <td key={sh} className="border px-2 py-1">
+                          {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
+                            <div className="flex flex-wrap gap-1">
+                              {row[sh].map((tag: any, tagIdx: number) => (
+                                <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1" style={{ background: tag.color, color: '#222' }}>
+                                  <RiPriceTag3Line className="inline mr-1" />{tag.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : Array.isArray(row[sh]) ? row[sh].join(', ') : typeof row[sh] === 'object' && row[sh] !== null ? row[sh].name || JSON.stringify(row[sh]) : row[sh]}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
