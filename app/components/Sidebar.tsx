@@ -36,6 +36,7 @@ export default function Sidebar({ onItemClick }: SidebarProps) {
   const menuItems = [
     { name: 'Dashboard', path: '/dashboard', icon: RiDashboardLine },
     { name: 'Banks', path: '/banks', icon: RiBankLine },
+    { name: 'Super Bank', path: '/super-bank', icon: RiBankLine },
     { name: 'Tags', path: '/tags', icon: RiPriceTag3Line },
   ];
 
