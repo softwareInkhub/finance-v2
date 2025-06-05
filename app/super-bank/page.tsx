@@ -57,8 +57,9 @@ export default function SuperBankPage() {
 
   const [tagFilters, setTagFilters] = useState<string[]>([]);
 
-  const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [selection, setSelection] = useState<{ text: string; x: number; y: number; rowIdx?: number } | null>(null);
   const [tagCreateMsg, setTagCreateMsg] = useState<string | null>(null);
+  const [pendingTag, setPendingTag] = useState<{ tagName: string; rowIdx: number; selectionText: string } | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
   // Fetch all transactions
@@ -136,17 +137,28 @@ export default function SuperBankPage() {
       });
   }, []);
 
-  // Detect text selection in table
+  // Detect text selection in table and which row
   useEffect(() => {
     const handleMouseUp = (e: MouseEvent) => {
       const sel = window.getSelection();
       if (sel && sel.toString().trim() && tableRef.current && tableRef.current.contains(sel.anchorNode)) {
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
+        // Try to find the row index
+        let rowIdx: number | undefined = undefined;
+        let node = sel.anchorNode as HTMLElement | null;
+        while (node && node !== tableRef.current) {
+          if (node instanceof HTMLTableRowElement && node.hasAttribute('data-row-idx')) {
+            rowIdx = parseInt(node.getAttribute('data-row-idx') || '', 10);
+            break;
+          }
+          node = node.parentElement;
+        }
         setSelection({
           text: sel.toString().trim(),
           x: rect.left + window.scrollX,
           y: rect.bottom + window.scrollY,
+          rowIdx,
         });
       } else {
         setSelection(null);
@@ -168,6 +180,7 @@ export default function SuperBankPage() {
       });
       if (!res.ok) throw new Error("Failed to create tag");
       setTagCreateMsg("Tag created!");
+      setPendingTag(selection.rowIdx !== undefined ? { tagName: selection.text, rowIdx: selection.rowIdx, selectionText: selection.text } : null);
       setSelection(null);
       // Refresh tags
       const tagsRes = await fetch('/api/tags');
@@ -175,8 +188,106 @@ export default function SuperBankPage() {
       setAllTags(Array.isArray(tags) ? tags : []);
     } catch {
       setTagCreateMsg("Failed to create tag");
+      setTimeout(() => setTagCreateMsg(null), 1500);
     }
+  };
+
+  // Apply tag to only this transaction row
+  const handleApplyTagToRow = async () => {
+    if (!pendingTag) return;
+    const { tagName, rowIdx } = pendingTag;
+    const tagObj = allTags.find(t => t.name === tagName);
+    if (!tagObj) return setPendingTag(null);
+    // Find the transaction and row index
+    let txIdx = 0, found = false;
+    for (const tx of transactions) {
+      if (tx.transactionData && Array.isArray(tx.transactionData)) {
+        for (let i = 0; i < tx.transactionData.length; ++i) {
+          if (txIdx === rowIdx) {
+            // Add tag to this row
+            const row = tx.transactionData[i];
+            const tags = Array.isArray(row.tags) ? [...row.tags] : [];
+            if (!tags.some((t: any) => t.id === tagObj.id)) tags.push(tagObj);
+            const newData = tx.transactionData.map((r, idx) => idx === i ? { ...r, tags } : r);
+            await fetch('/api/transaction/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ transactionId: tx.id, transactionData: newData })
+            });
+            found = true;
+            break;
+          }
+          txIdx++;
+        }
+        if (found) break;
+      }
+    }
+    setPendingTag(null);
+    setTagCreateMsg("Tag applied to transaction!");
     setTimeout(() => setTagCreateMsg(null), 1500);
+    // Optionally, refresh transactions
+    setLoading(true);
+    fetch("/api/transactions/all")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setTransactions(data);
+        else setError(data.error || "Failed to fetch transactions");
+      })
+      .catch(() => setError("Failed to fetch transactions"))
+      .finally(() => setLoading(false));
+  };
+
+  // Apply tag to all transactions where selection text is present in Descriptions (case-insensitive)
+  const handleApplyTagToAll = async () => {
+    if (!pendingTag) return;
+    const { tagName, selectionText } = pendingTag;
+    const tagObj = allTags.find(t => t.name === tagName);
+    if (!tagObj) return setPendingTag(null);
+    const descSuperHeader = superHeader.find(h => h.toLowerCase().includes('description'));
+    if (!descSuperHeader) return setPendingTag(null);
+    // For each transaction, use reverse mapping to get the actual data field for Descriptions
+    await Promise.all(transactions.map(async (tx) => {
+      const mapping = bankMappings[tx.bankId]?.mapping || {};
+      // Reverse mapping: { [superHeader]: bankHeader }
+      const reverseMap: { [superHeader: string]: string } = {};
+      Object.entries(mapping).forEach(([bankHeader, superHeader]) => {
+        if (superHeader) reverseMap[superHeader] = bankHeader;
+      });
+      const descField = reverseMap[descSuperHeader] || descSuperHeader;
+      if (!tx.transactionData || !Array.isArray(tx.transactionData)) return;
+      let changed = false;
+      const newData = tx.transactionData.map((row: any) => {
+        const desc = row[descField];
+        if (typeof desc === 'string' && desc.toLowerCase().includes(selectionText.toLowerCase())) {
+          const tags = Array.isArray(row.tags) ? [...row.tags] : [];
+          if (!tags.some((t: any) => t.id === tagObj.id)) {
+            changed = true;
+            return { ...row, tags: [...tags, tagObj] };
+          }
+        }
+        return row;
+      });
+      if (changed) {
+        await fetch('/api/transaction/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transactionId: tx.id, transactionData: newData })
+        });
+      }
+    }));
+    setPendingTag(null);
+    setTagCreateMsg("Tag applied to all matching transactions!");
+    setTimeout(() => setTagCreateMsg(null), 1500);
+    // Optionally, refresh transactions
+    setLoading(true);
+    fetch("/api/transactions/all")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setTransactions(data);
+        else setError(data.error || "Failed to fetch transactions");
+      })
+      .catch(() => setError("Failed to fetch transactions"))
+      .finally(() => setLoading(false));
   };
 
   // Helper: get mapped data for a transaction
@@ -649,6 +760,17 @@ export default function SuperBankPage() {
               + Create Tag from Selection
             </button>
           )}
+          {/* Prompt to apply tag to transaction */}
+          {pendingTag && (
+            <div style={{ position: 'absolute', left: selection?.x ?? 100, top: (selection?.y ?? 100) + 40, zIndex: 1001 }} className="bg-white border border-blue-200 rounded shadow-lg px-4 py-3 flex flex-col gap-3 items-center">
+              <span>Apply tag "<span className="font-bold text-blue-700">{pendingTag.tagName}</span>" to:</span>
+              <div className="flex gap-2">
+                <button className="px-3 py-1 bg-green-600 text-white rounded font-semibold text-xs hover:bg-green-700" onClick={handleApplyTagToRow}>Only this transaction</button>
+                <button className="px-3 py-1 bg-blue-600 text-white rounded font-semibold text-xs hover:bg-blue-700" onClick={handleApplyTagToAll}>All transactions with this text</button>
+                <button className="px-3 py-1 bg-gray-200 text-gray-700 rounded font-semibold text-xs hover:bg-gray-300" onClick={() => setPendingTag(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
           {tagCreateMsg && (
             <div className="absolute left-1/2 top-2 -translate-x-1/2 bg-green-100 text-green-800 px-4 py-2 rounded shadow text-sm z-50">
               {tagCreateMsg}
@@ -676,7 +798,7 @@ export default function SuperBankPage() {
                 </thead>
                 <tbody>
                   {filteredRows.map((row, idx) => (
-                    <tr key={idx}>
+                    <tr key={idx} data-row-idx={idx}>
                       <td className="border px-2 py-1 text-center">
                         <input
                           type="checkbox"
