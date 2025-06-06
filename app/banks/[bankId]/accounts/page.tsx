@@ -41,8 +41,8 @@ export default function AccountsPage() {
     if (!bankId) return;
     fetch(`/api/bank`)
       .then(res => res.json())
-      .then((banks) => {
-        const bank = Array.isArray(banks) ? banks.find((b: any) => b.id === bankId) : null;
+      .then((banks: { id: string; bankName: string }[]) => {
+        const bank = Array.isArray(banks) ? banks.find((b) => b.id === bankId) : null;
         setBankName(bank?.bankName || "");
       });
   }, [bankId]);

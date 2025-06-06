@@ -12,6 +12,11 @@ interface StatementPreviewModalProps {
   fileName?: string;
 }
 
+interface Bank {
+  id: string;
+  bankName: string;
+}
+
 const SlicedPreviewModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
@@ -123,7 +128,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
     fetch(`/api/bank`)
       .then(res => res.json())
       .then((banks) => {
-        const bank = Array.isArray(banks) ? banks.find((b: any) => b.id === bankId) : null;
+        const bank = Array.isArray(banks) ? banks.find((b: Bank) => b.id === bankId) : null;
         setBankName(bank?.bankName || "");
       });
   }, [bankId]);
@@ -148,7 +153,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
     setSaveError(null);
     try {
       // Remove 'Serial No' column from header and all rows (case-insensitive, trims whitespace)
-      let baseHeader = data[headerRow];
+      const baseHeader = data[headerRow];
       const serialIdx = baseHeader.findIndex(h => h.trim().toLowerCase() === 'serial no' || h.trim().toLowerCase() === 'sl. no.' || h.trim().toLowerCase() === 'sl. no' || h.trim().toLowerCase() === 's.no' || h.trim().toLowerCase() === 's. no');
       let filteredHeader = baseHeader;
       let filteredRows = data.slice(startRow, endRow + 1);

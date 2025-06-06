@@ -1,8 +1,18 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { RiEdit2Line } from 'react-icons/ri';
 import { FiDownload } from 'react-icons/fi';
 import { RiPriceTag3Line } from 'react-icons/ri';
+
+interface Tag {
+  id: string;
+  name: string;
+  color?: string;
+}
+
+interface TransactionRow {
+  [key: string]: string | number | Tag[] | undefined;
+  tags?: Tag[];
+}
 
 interface Transaction {
   id: string;
@@ -14,8 +24,8 @@ interface Transaction {
   s3FileUrl?: string;
   fileName?: string;
   createdAt?: string;
-  transactionData?: Record<string, string | any>[];
-  tags?: any[];
+  transactionData?: TransactionRow[];
+  tags?: Tag[];
 }
 
 interface BankHeaderMapping {
@@ -44,7 +54,7 @@ export default function SuperBankPage() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
 
-  const [allTags, setAllTags] = useState<any[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [selectedTagId, setSelectedTagId] = useState<string>("");
   const [tagging, setTagging] = useState(false);
   const [tagError, setTagError] = useState<string | null>(null);
@@ -95,11 +105,11 @@ export default function SuperBankPage() {
   useEffect(() => {
     fetch(`/api/bank`)
       .then(res => res.json())
-      .then(async (banks) => {
+      .then(async (banks: { id: string; bankName: string }[]) => {
         if (!Array.isArray(banks)) return;
         const mappings: { [bankId: string]: BankHeaderMapping } = {};
         await Promise.all(
-          banks.map(async (bank: any) => {
+          banks.map(async (bank) => {
             const res = await fetch(`/api/bank-header?bankName=${encodeURIComponent(bank.bankName)}`);
             const data = await res.json();
             if (data && data.mapping) {
@@ -122,12 +132,12 @@ export default function SuperBankPage() {
   useEffect(() => {
     fetch('/api/bank')
       .then(res => res.json())
-      .then(async (banks) => {
+      .then(async (banks: { id: string; bankName: string }[]) => {
         if (!Array.isArray(banks)) return;
         setTotalBanks(banks.length);
         let accountCount = 0;
         await Promise.all(
-          banks.map(async (bank: any) => {
+          banks.map(async (bank) => {
             const res = await fetch(`/api/account?bankId=${bank.id}`);
             const accounts = await res.json();
             if (Array.isArray(accounts)) accountCount += accounts.length;
@@ -139,7 +149,7 @@ export default function SuperBankPage() {
 
   // Detect text selection in table and which row
   useEffect(() => {
-    const handleMouseUp = (e: MouseEvent) => {
+    const handleMouseUp = () => {
       const sel = window.getSelection();
       if (sel && sel.toString().trim() && tableRef.current && tableRef.current.contains(sel.anchorNode)) {
         const range = sel.getRangeAt(0);
@@ -207,7 +217,7 @@ export default function SuperBankPage() {
             // Add tag to this row
             const row = tx.transactionData[i];
             const tags = Array.isArray(row.tags) ? [...row.tags] : [];
-            if (!tags.some((t: any) => t.id === tagObj.id)) tags.push(tagObj);
+            if (!tags.some((t: Tag) => t.id === tagObj.id)) tags.push(tagObj);
             const newData = tx.transactionData.map((r, idx) => idx === i ? { ...r, tags } : r);
             await fetch('/api/transaction/update', {
               method: 'POST',
@@ -256,11 +266,11 @@ export default function SuperBankPage() {
       const descField = reverseMap[descSuperHeader] || descSuperHeader;
       if (!tx.transactionData || !Array.isArray(tx.transactionData)) return;
       let changed = false;
-      const newData = tx.transactionData.map((row: any) => {
+      const newData = tx.transactionData.map((row: TransactionRow) => {
         const desc = row[descField];
         if (typeof desc === 'string' && desc.toLowerCase().includes(selectionText.toLowerCase())) {
           const tags = Array.isArray(row.tags) ? [...row.tags] : [];
-          if (!tags.some((t: any) => t.id === tagObj.id)) {
+          if (!tags.some((t: Tag) => t.id === tagObj.id)) {
             changed = true;
             return { ...row, tags: [...tags, tagObj] };
           }
@@ -290,26 +300,8 @@ export default function SuperBankPage() {
       .finally(() => setLoading(false));
   };
 
-  // Helper: get mapped data for a transaction
-  function getMappedRow(tx: Transaction) {
-    const mapping = bankMappings[tx.bankId]?.mapping || {};
-    // Reverse mapping: { [superHeader]: bankHeader }
-    const reverseMap: { [superHeader: string]: string } = {};
-    Object.entries(mapping).forEach(([bankHeader, superHeader]) => {
-      if (superHeader) reverseMap[superHeader] = bankHeader;
-    });
-    const row: (string | undefined)[] = superHeader.map((sh) => {
-      const bankHeader = reverseMap[sh];
-      if (!bankHeader || !tx.transactionData || !Array.isArray(tx.transactionData)) return "";
-      // If transactionData is an array, show all rows (flattened)
-      // For Super Bank, show each transaction row as a separate row
-      return undefined; // We'll handle in render
-    });
-    return { reverseMap };
-  }
-
   // Flatten all transactionData rows with mapping
-  const mappedRows: { [key: string]: any }[] = [];
+  const mappedRows: TransactionRow[] = [];
   transactions.forEach((tx) => {
     const mapping = bankMappings[tx.bankId]?.mapping || {};
     // Reverse mapping: { [superHeader]: bankHeader }
@@ -318,8 +310,8 @@ export default function SuperBankPage() {
       if (superHeader) reverseMap[superHeader] = bankHeader;
     });
     if (tx.transactionData && Array.isArray(tx.transactionData)) {
-      tx.transactionData.forEach((row: any) => {
-        const mappedRow: { [key: string]: any } = {};
+      tx.transactionData.forEach((row: TransactionRow) => {
+        const mappedRow: TransactionRow = {};
         superHeader.forEach((sh) => {
           const bankHeader = reverseMap[sh];
           mappedRow[sh] = bankHeader ? row[bankHeader] || "" : "";
@@ -331,8 +323,7 @@ export default function SuperBankPage() {
     }
   });
 
-  const handleHeaderSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleHeaderSave = async () => {
     setHeaderLoading(true);
     setHeaderError(null);
     setHeaderSuccess(null);
@@ -373,21 +364,26 @@ export default function SuperBankPage() {
   const filteredRows = mappedRows.filter((row) => {
     // Multi-tag filter: show if row has at least one selected tag
     if (tagFilters.length > 0) {
-      if (!row.tags || !Array.isArray(row.tags) || !row.tags.some((t: any) => t && typeof t === 'object' && tagFilters.includes(t.name))) {
+      if (!row.tags || !Array.isArray(row.tags) || !row.tags.some((t: Tag) => t && tagFilters.includes(t.name))) {
         return false;
       }
     }
     // Search
     const searchMatch =
-      !search || Object.values(row).some((val) =>
-        String(val).toLowerCase().includes(search.toLowerCase())
-      );
+      !search || Object.values(row).some((val) => {
+        if (typeof val === 'string' || typeof val === 'number') {
+          return String(val).toLowerCase().includes(search.toLowerCase());
+        } else if (Array.isArray(val)) {
+          return val.map(v => typeof v === 'object' && v !== null && 'name' in v ? (v as Tag).name : String(v)).join(', ').toLowerCase().includes(search.toLowerCase());
+        }
+        return false;
+      });
     // Date range (try to find a date column)
     let dateMatch = true;
     const dateCol = superHeader.find((h) => h.toLowerCase().includes("date"));
     if (dateCol && (dateRange.from || dateRange.to)) {
       const rowDate = row[dateCol];
-      if (rowDate) {
+      if (typeof rowDate === 'string') {
         // Try to parse as yyyy-mm-dd or dd/mm/yyyy
         let d = rowDate;
         if (/\d{2}\/\d{2}\/\d{4}/.test(d)) {
@@ -429,9 +425,10 @@ export default function SuperBankPage() {
       rows.map((row) =>
         superHeader.map((sh) => {
           const val = row[sh];
-          if (Array.isArray(val)) return val.map((v) => (typeof v === 'object' && v !== null ? v.name || JSON.stringify(v) : String(v))).join('; ');
-          if (typeof val === 'object' && val !== null) return val.name || JSON.stringify(val);
-          return val;
+          if (Array.isArray(val)) return val.map((v) => (typeof v === 'object' && v !== null && 'name' in v ? (v as Tag).name : String(v))).join('; ');
+          if (typeof val === 'object' && val !== null && 'name' in val) return (val as Tag).name;
+          if (typeof val === 'string' || typeof val === 'number') return String(val);
+          return '';
         }).join(",")
       )
     ).join("\n");
@@ -457,7 +454,7 @@ export default function SuperBankPage() {
     let rowIdx = 0;
     transactions.forEach((tx) => {
       if (tx.transactionData && Array.isArray(tx.transactionData)) {
-        tx.transactionData.forEach((row: any, i: number) => {
+        tx.transactionData.forEach((row: TransactionRow, i: number) => {
           if (selectedRows.has(rowIdx)) {
             if (!txMap[tx.id]) txMap[tx.id] = { tx, rowIndexes: [] };
             txMap[tx.id].rowIndexes.push(i);
@@ -469,10 +466,10 @@ export default function SuperBankPage() {
     try {
       await Promise.all(Object.values(txMap).map(async ({ tx, rowIndexes }) => {
         if (!tx.transactionData) return;
-        const newData = tx.transactionData.map((row: any, i: number) => {
+        const newData = tx.transactionData.map((row: TransactionRow, i: number) => {
           if (rowIndexes.includes(i)) {
             const tags = Array.isArray(row.tags) ? [...row.tags] : [];
-            if (!tags.some((t: any) => t.id === tagObj.id)) tags.push(tagObj);
+            if (!tags.some((t: Tag) => t.id === tagObj.id)) tags.push(tagObj);
             return { ...row, tags };
           }
           return row;
@@ -497,7 +494,7 @@ export default function SuperBankPage() {
         })
         .catch(() => setError("Failed to fetch transactions"))
         .finally(() => setLoading(false));
-    } catch (e) {
+    } catch {
       setTagError('Failed to add tag');
     } finally {
       setTagging(false);
@@ -624,9 +621,13 @@ export default function SuperBankPage() {
               <div className="px-4 py-2 bg-green-100 text-green-800 rounded-lg font-semibold shadow text-sm">
                 Total Amount: {filteredRows.reduce((sum, row) => {
                   const amountCol = superHeader.find(h => h.toLowerCase().includes('amount'));
-                  let val = amountCol ? row[amountCol] : 0;
-                  if (typeof val === 'string') val = val.replace(/,/g, '');
-                  const num = parseFloat(val) || 0;
+                  const val = amountCol ? row[amountCol] : 0;
+                  let num = 0;
+                  if (typeof val === 'string') {
+                    num = parseFloat(val.replace(/,/g, '')) || 0;
+                  } else if (typeof val === 'number') {
+                    num = val;
+                  }
                   return sum + num;
                 }, 0).toLocaleString()}
               </div>
@@ -644,7 +645,7 @@ export default function SuperBankPage() {
               (() => {
                 let tagged = 0, untagged = 0;
                 filteredRows.forEach(row => {
-                  const tags = row['Tags'] || row['tags'];
+                  const tags = (row['Tags'] || row['tags']) as Tag[] | undefined;
                   if (Array.isArray(tags) && tags.length > 0) tagged++;
                   else untagged++;
                 });
@@ -657,8 +658,8 @@ export default function SuperBankPage() {
                   </div>
                   <div className="px-4 py-2 bg-indigo-100 text-indigo-800 rounded-lg font-semibold shadow text-sm">
                     Total Tags: {(() => {
-                      const tags = filteredRows.flatMap(row => row.tags || []);
-                      return new Set(tags.filter(t => typeof t === 'string' && t)).size;
+                      const tags = filteredRows.flatMap(row => Array.isArray(row.tags) ? row.tags : []);
+                      return new Set(tags.map(t => t.name)).size;
                     })()}
                   </div>
                 </>;
@@ -763,7 +764,7 @@ export default function SuperBankPage() {
           {/* Prompt to apply tag to transaction */}
           {pendingTag && (
             <div style={{ position: 'absolute', left: selection?.x ?? 100, top: (selection?.y ?? 100) + 40, zIndex: 1001 }} className="bg-white border border-blue-200 rounded shadow-lg px-4 py-3 flex flex-col gap-3 items-center">
-              <span>Apply tag "<span className="font-bold text-blue-700">{pendingTag.tagName}</span>" to:</span>
+              <span>Apply tag &quot;{pendingTag.tagName}&quot; to:</span>
               <div className="flex gap-2">
                 <button className="px-3 py-1 bg-green-600 text-white rounded font-semibold text-xs hover:bg-green-700" onClick={handleApplyTagToRow}>Only this transaction</button>
                 <button className="px-3 py-1 bg-blue-600 text-white rounded font-semibold text-xs hover:bg-blue-700" onClick={handleApplyTagToAll}>All transactions with this text</button>
@@ -811,13 +812,24 @@ export default function SuperBankPage() {
                         <td key={sh} className="border px-2 py-1">
                           {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
                             <div className="flex flex-wrap gap-1">
-                              {row[sh].map((tag: any, tagIdx: number) => (
+                              {(row[sh] as Tag[]).map((tag, tagIdx: number) => (
                                 <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1" style={{ background: tag.color, color: '#222' }}>
                                   <RiPriceTag3Line className="inline mr-1" />{tag.name}
                                 </span>
                               ))}
                             </div>
-                          ) : Array.isArray(row[sh]) ? row[sh].join(', ') : typeof row[sh] === 'object' && row[sh] !== null ? row[sh].name || JSON.stringify(row[sh]) : row[sh]}
+                          ) : Array.isArray(row[sh]) ? (
+                            (() => {
+                              const arr = row[sh] as unknown[];
+                              if (arr.length > 0 && typeof arr[0] === 'object' && arr[0] !== null && 'name' in arr[0]) {
+                                // Tag[]
+                                return (arr as Tag[]).map(t => t.name).join(', ');
+                              } else {
+                                // (string|number)[]
+                                return (arr as (string | number)[]).join(', ');
+                              }
+                            })()
+                          ) : typeof row[sh] === 'object' && row[sh] !== null && 'name' in row[sh] ? (row[sh] as Tag).name : row[sh]}
                         </td>
                       ))}
                     </tr>

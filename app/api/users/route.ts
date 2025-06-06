@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DynamoDBClient, PutItemCommand, GetItemCommand, ScanCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, PutItemCommand,ScanCommand } from '@aws-sdk/client-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
