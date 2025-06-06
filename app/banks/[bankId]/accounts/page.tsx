@@ -51,7 +51,8 @@ export default function AccountsPage() {
     const fetchAccounts = async () => {
       try {
         setError(null);
-        const res = await fetch(`/api/account?bankId=${bankId}`);
+        const userId = localStorage.getItem("userId") || "";
+        const res = await fetch(`/api/account?bankId=${bankId}&userId=${userId}`);
         if (!res.ok) throw new Error("Failed to fetch accounts");
         const data = await res.json();
         setAccounts(data);
@@ -134,7 +135,8 @@ export default function AccountsPage() {
           accountHolderName: form.accountHolderName,
           accountNumber: form.accountNumber,
           ifscCode: form.ifscCode,
-          tags: form.tags.split(",").map(t => t.trim()).filter(Boolean)
+          tags: form.tags.split(",").map(t => t.trim()).filter(Boolean),
+          userId: localStorage.getItem("userId") || ""
         })
       });
       if (!res.ok) throw new Error("Failed to create account");
@@ -203,7 +205,21 @@ export default function AccountsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
+    <div className="min-h-screen  py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
+      {/* Breadcrumb Navigation */}
+      <nav className="text-sm mb-4 flex items-center gap-2 text-gray-600">
+        <Link href="/" className="hover:underline">Home</Link>
+        <span>/</span>
+        <Link href="/banks" className="hover:underline">Banks</Link>
+        <span>/</span>
+        {bankId ? (
+          <span className="font-semibold">{bankName || 'Bank'}</span>
+        ) : (
+          <span>Bank</span>
+        )}
+        <span>/</span>
+        <span className="font-semibold text-blue-700">Accounts</span>
+      </nav>
       <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
         <div className="flex flex-row justify-between items-center gap-2 sm:gap-4 mb-2">
           <div className="flex items-center gap-2">

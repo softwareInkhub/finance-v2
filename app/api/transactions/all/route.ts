@@ -2,13 +2,20 @@ import { NextResponse } from 'next/server';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, TABLES } from '../../aws-client';
 
-// GET /api/transactions/all
-export async function GET() {
+// GET /api/transactions/all?userId=xxx
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get('userId');
   try {
+    let params: any = {
+      TableName: TABLES.TRANSACTIONS || 'transactions',
+    };
+    if (userId) {
+      params.FilterExpression = 'userId = :userId';
+      params.ExpressionAttributeValues = { ':userId': userId };
+    }
     const result = await docClient.send(
-      new ScanCommand({
-        TableName: TABLES.TRANSACTIONS || 'transactions',
-      })
+      new ScanCommand(params)
     );
     return NextResponse.json(result.Items || []);
   } catch (error) {

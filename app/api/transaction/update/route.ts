@@ -6,18 +6,35 @@ export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const { transactionId, transactionData } = await request.json();
-    if (!transactionId || !transactionData) {
+    const body = await request.json();
+    const { transactionId, transactionData, tags } = body;
+    if (!transactionId || (!transactionData && !tags)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    // transactionData should have tags as an array for each row (tags: string[])
+    // Build the update expression dynamically
+    const updateFields = [];
+    const exprAttrNames: Record<string, string> = {};
+    const exprAttrValues: Record<string, any> = {};
+    if (transactionData) {
+      for (const f of Object.keys(transactionData)) {
+        updateFields.push(f);
+        exprAttrNames[`#${f}`] = f;
+        exprAttrValues[`:${f}`] = transactionData[f];
+      }
+    }
+    if (tags) {
+      updateFields.push('tags');
+      exprAttrNames['#tags'] = 'tags';
+      exprAttrValues[':tags'] = tags;
+    }
+    const updateExpr = 'SET ' + updateFields.map(f => `#${f} = :${f}`).join(', ');
     await docClient.send(
       new UpdateCommand({
         TableName: TABLES.TRANSACTIONS || 'transactions',
         Key: { id: transactionId },
-        UpdateExpression: 'SET #transactionData = :transactionData',
-        ExpressionAttributeNames: { '#transactionData': 'transactionData' },
-        ExpressionAttributeValues: { ':transactionData': transactionData },
+        UpdateExpression: updateExpr,
+        ExpressionAttributeNames: exprAttrNames,
+        ExpressionAttributeValues: exprAttrValues,
       })
     );
     return NextResponse.json({ success: true });

@@ -9,52 +9,38 @@ export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const { csv, statementId, startRow, endRow, bankId, accountId, tags = [], fileName } = await request.json();
+    const { csv, statementId, startRow, endRow, bankId, accountId, tags = [], fileName, userId, bankName, accountName } = await request.json();
     if (!csv || !statementId || startRow == null || endRow == null || !bankId || !accountId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    const transactionId = uuidv4();
-    const key = `transactions/${transactionId}.csv`;
-    // Upload CSV to S3
-    await s3.send(new PutObjectCommand({
-      Bucket: S3_BUCKET,
-      Key: key,
-      Body: csv,
-      ContentType: 'text/csv',
-    }));
-    const s3FileUrl = `https://${S3_BUCKET}.s3.amazonaws.com/${key}`;
     // Parse CSV to array of objects
     const parsed = Papa.parse(csv, { header: true });
-    // Clean parsed data to remove empty string keys and add tags array
-    const cleanedData = (parsed.data as Record<string, string>[]).map(obj => {
-      const cleaned: Record<string, string | string[]> = {};
-      for (const key in obj) {
-        if (key && key.trim() !== '' && key !== 'tag' && key !== 'tags') cleaned[key] = obj[key];
+    const rows = parsed.data as Record<string, string>[];
+    const now = new Date().toISOString();
+    // Save each row as a separate transaction item
+    const putPromises = rows.map((row) => {
+      // Clean row and add extra fields
+      const cleaned: Record<string, any> = {};
+      for (const key in row) {
+        if (key && key.trim() !== '' && key !== 'tag' && key !== 'tags') cleaned[key] = row[key];
       }
       cleaned['tags'] = [];
-      return cleaned;
-    });
-    // Save metadata and data to DynamoDB
-    const transaction = {
-      id: transactionId,
-      statementId,
-      bankId,
-      accountId,
-      startRow,
-      endRow,
-      s3FileUrl,
-      fileName: fileName || '',
-      transactionData: cleanedData,
-      tags,
-      createdAt: new Date().toISOString(),
-    };
-    await docClient.send(
-      new PutCommand({
+      cleaned['userId'] = userId || '';
+      cleaned['bankId'] = bankId;
+      cleaned['bankName'] = bankName || '';
+      cleaned['accountId'] = accountId;
+      cleaned['accountName'] = accountName || '';
+      cleaned['statementId'] = statementId;
+      cleaned['fileName'] = fileName || '';
+      cleaned['createdAt'] = now;
+      cleaned['id'] = uuidv4();
+      return docClient.send(new PutCommand({
         TableName: TABLES.TRANSACTIONS || 'transactions',
-        Item: transaction,
-      })
-    );
-    return NextResponse.json(transaction);
+        Item: cleaned,
+      }));
+    });
+    await Promise.all(putPromises);
+    return NextResponse.json({ success: true, count: rows.length });
   } catch (error) {
     console.error('Error saving transaction slice:', error);
     return NextResponse.json({ error: 'Failed to save transaction slice' }, { status: 500 });

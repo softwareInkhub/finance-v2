@@ -138,7 +138,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
     fetch(`/api/account?accountId=${accountId}`)
       .then(res => res.json())
       .then((account) => {
-        setAccountName(account?.accountHolderName || "");
+        setAccountName(account?.accountName || account?.accountHolderName || "");
       });
   }, [accountId]);
 
@@ -180,6 +180,9 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
           endRow,
           headerRow,
           fileName: fileName || '',
+          userId: localStorage.getItem("userId") || "",
+          bankName,
+          accountName,
         })
       });
       if (!res.ok) {
@@ -218,59 +221,59 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
             <h3 className="text-lg font-semibold text-green-800 mb-2">Step 2: Select Transaction Range</h3>
             <p className="text-green-600">Select the start and end rows for your transactions.</p>
             <div className="flex items-center gap-4 mt-2">
-              <span className="inline-flex items-center gap-1 text-sm bg-blue-50 px-2 py-1 rounded">
-                Start Row:
-                <input
-                  type="number"
+          <span className="inline-flex items-center gap-1 text-sm bg-blue-50 px-2 py-1 rounded">
+            Start Row:
+            <input
+              type="number"
                   min={headerRow !== null ? headerRow + 1 : 1}
-                  max={data.length - 1}
-                  className="w-16 px-1 py-0.5 border rounded text-center outline-none focus:ring-2 focus:ring-blue-200"
-                  value={startRow !== null ? startRow : ''}
-                  placeholder="-"
-                  onChange={e => {
-                    const val = e.target.value;
-                    if (val === '') {
-                      setStartRow(null);
-                      setEndRow(null);
-                    } else {
-                      const num = parseInt(val, 10);
+              max={data.length - 1}
+              className="w-16 px-1 py-0.5 border rounded text-center outline-none focus:ring-2 focus:ring-blue-200"
+              value={startRow !== null ? startRow : ''}
+              placeholder="-"
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '') {
+                  setStartRow(null);
+                  setEndRow(null);
+                } else {
+                  const num = parseInt(val, 10);
                       if (!isNaN(num) && num > (headerRow || 0) && num <= data.length - 1) {
-                        setStartRow(num);
-                        if (endRow !== null && endRow < num) setEndRow(null);
-                      }
-                    }
-                  }}
-                />
-              </span>
-              <span className="inline-flex items-center gap-1 text-sm bg-yellow-50 px-2 py-1 rounded">
-                End Row:
-                <input
-                  type="number"
+                    setStartRow(num);
+                    if (endRow !== null && endRow < num) setEndRow(null);
+                  }
+                }
+              }}
+            />
+          </span>
+          <span className="inline-flex items-center gap-1 text-sm bg-yellow-50 px-2 py-1 rounded">
+            End Row:
+            <input
+              type="number"
                   min={startRow !== null ? startRow + 1 : headerRow !== null ? headerRow + 2 : 2}
-                  max={data.length - 1}
-                  className="w-16 px-1 py-0.5 border rounded text-center outline-none focus:ring-2 focus:ring-yellow-200"
-                  value={endRow !== null ? endRow : ''}
-                  placeholder="-"
-                  onChange={e => {
-                    const val = e.target.value;
-                    if (val === '') {
-                      setEndRow(null);
-                    } else {
-                      const num = parseInt(val, 10);
-                      if (
-                        !isNaN(num) &&
-                        startRow !== null &&
-                        num > startRow &&
-                        num <= data.length - 1
-                      ) {
-                        setEndRow(num);
-                      }
-                    }
-                  }}
-                  disabled={startRow === null}
-                />
-              </span>
-            </div>
+              max={data.length - 1}
+              className="w-16 px-1 py-0.5 border rounded text-center outline-none focus:ring-2 focus:ring-yellow-200"
+              value={endRow !== null ? endRow : ''}
+              placeholder="-"
+              onChange={e => {
+                const val = e.target.value;
+                if (val === '') {
+                  setEndRow(null);
+                } else {
+                  const num = parseInt(val, 10);
+                  if (
+                    !isNaN(num) &&
+                    startRow !== null &&
+                    num > startRow &&
+                    num <= data.length - 1
+                  ) {
+                    setEndRow(num);
+                  }
+                }
+              }}
+              disabled={startRow === null}
+            />
+          </span>
+        </div>
           </div>
         )}
         {loading ? (
@@ -353,15 +356,15 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
               </tbody>
             </table>
             {selectionStep === 'transactions' && (
-              <div className="flex justify-end mt-4">
-                <button
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                  disabled={startRow === null || endRow === null}
-                  onClick={handleSlice}
-                >
-                  Slice
-                </button>
-              </div>
+            <div className="flex justify-end mt-4">
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                disabled={startRow === null || endRow === null}
+                onClick={handleSlice}
+              >
+                Slice
+              </button>
+            </div>
             )}
           </div>
         ) : (

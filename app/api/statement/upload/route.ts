@@ -13,6 +13,7 @@ export async function POST(request: Request) {
     const bankId = formData.get('bankId');
     const accountId = formData.get('accountId');
     const fileName = formData.get('fileName');
+    const userId = formData.get('userId');
     if (!file || typeof file === 'string' || !bankId || !accountId) {
       return NextResponse.json({ error: 'Missing file, bankId, or accountId' }, { status: 400 });
     }
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
       transactionHeader: [],
       transactionData: [],
       tags: [],
+      userId: userId || '',
     };
     await docClient.send(
       new PutCommand({

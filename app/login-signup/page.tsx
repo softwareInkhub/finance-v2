@@ -33,6 +33,7 @@ export default function LoginSignupPage() {
       setSuccess(mode === 'signup' ? "Signup successful!" : "Login successful!");
       if (mode === 'login') {
         localStorage.setItem("isLoggedIn", "true");
+        localStorage.setItem("userId", data.user?.userId || "");
         setTimeout(() => router.push('/'), 800);
       }
     }
