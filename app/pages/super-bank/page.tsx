@@ -2,11 +2,11 @@
 import { useEffect, useState, useRef } from "react";
 import { FiDownload } from 'react-icons/fi';
 import { RiPriceTag3Line } from 'react-icons/ri';
-import AnalyticsSummary from '../components/AnalyticsSummary';
-import TransactionFilterBar from '../components/TransactionFilterBar';
-import TagFilterPills from '../components/TagFilterPills';
-import TaggingControls from '../components/TaggingControls';
-import TransactionTable from '../components/TransactionTable';
+import AnalyticsSummary from '../../components/AnalyticsSummary';
+import TransactionFilterBar from '../../components/TransactionFilterBar';
+import TagFilterPills from '../../components/TagFilterPills';
+import TaggingControls from '../../components/TaggingControls';
+import TransactionTable from '../../components/TransactionTable';
 
 interface Tag {
   id: string;
@@ -240,16 +240,16 @@ export default function SuperBankPage() {
       .finally(() => setLoading(false));
   };
 
-  // Apply tag to all transactions where selection text is present in ANY primitive field (case-sensitive, all columns)
+  // Apply tag to all transactions where selection text is present in ANY field (except tags, case-sensitive, all columns)
   const handleApplyTagToAll = async () => {
     if (!pendingTag) return;
     const { tagName, selectionText } = pendingTag;
     const tagObj = allTags.find(t => t.name === tagName);
     if (!tagObj) return setPendingTag(null);
     await Promise.all(transactions.map(async (tx) => {
-      // Check all primitive fields except arrays/objects for case-sensitive match
+      // Check all primitive fields except arrays/objects and 'tags' for case-sensitive match
       const hasMatch = Object.entries(tx).some(([key, val]) =>
-        key !== 'id' && key !== 'tags' &&
+        key !== 'tags' &&
         ((typeof val === 'string' && val.includes(selectionText)) ||
          (typeof val === 'number' && String(val).includes(selectionText)))
       );
@@ -279,15 +279,21 @@ export default function SuperBankPage() {
 
   // Flatten all transaction rows for rendering
   const mappedRows: TransactionRow[] = transactions.map((tx) => {
-    // Copy all primitive fields and tags from the original transaction
-    const txObj: TransactionRow = {};
-    Object.entries(tx).forEach(([key, value]) => {
-      if (key === 'tags') txObj.tags = Array.isArray(value) ? value : [];
-      else if (Array.isArray(value)) return; // skip arrays except tags
-      else txObj[key] = value;
+    const mapping = bankMappings[tx.bankId]?.mapping || {};
+    // Reverse mapping: { [superHeader]: bankHeader }
+    const reverseMap: { [superHeader: string]: string } = {};
+    Object.entries(mapping).forEach(([bankHeader, superHeader]) => {
+      if (superHeader) reverseMap[superHeader] = bankHeader;
     });
-    txObj.id = tx.id;
-    return txObj;
+    const mappedRow: TransactionRow = {};
+    const txObj = tx as Record<string, any>;
+    superHeader.forEach((sh) => {
+      const bankHeader = reverseMap[sh];
+      mappedRow[sh] = bankHeader ? txObj[bankHeader] || txObj[sh] || "" : txObj[sh] || "";
+    });
+    mappedRow.tags = txObj.tags || [];
+    mappedRow.id = tx.id;
+    return mappedRow;
   });
 
   const handleHeaderSave = async () => {
@@ -545,32 +551,30 @@ export default function SuperBankPage() {
     setSuperHeader(newHeaders);
   };
 
-  // Fetch all tags (refactored to a function for reuse)
-  const fetchTags = async () => {
-    const res = await fetch('/api/tags');
-    const data = await res.json();
-    if (Array.isArray(data)) setAllTags(data); else setAllTags([]);
+  // Handler to apply tag to all matching transactions from context menu
+  const handleApplyTagToAllFromMenu = (tagName: string) => {
+    setPendingTag({ tagName, rowIdx: -1, selectionText: tagName });
+    setTimeout(() => handleApplyTagToAll(), 0); // ensure pendingTag is set before running
   };
 
-  // Fetch all transactions (refactored to a function for reuse)
-  const fetchTransactions = async () => {
-    setLoading(true);
-    setError(null);
-    const userId = localStorage.getItem("userId") || "";
-    fetch(`/api/transactions/all?userId=${userId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setTransactions(data);
-        else setError(data.error || "Failed to fetch transactions");
-      })
-      .catch(() => setError("Failed to fetch transactions"))
-      .finally(() => setLoading(false));
-  };
+  // Compute tag statistics for filteredRows
+  const tagStats: Record<string, number> = {};
+  filteredRows.forEach(row => {
+    if (Array.isArray(row.tags)) {
+      row.tags.forEach(tag => {
+        if (tag && tag.name) {
+          tagStats[tag.name] = (tagStats[tag.name] || 0) + 1;
+        }
+      });
+    }
+  });
 
-  // Handler to refresh tags and transactions after tag delete
-  const handleTagDeleted = async () => {
-    await fetchTags();
-    await fetchTransactions();
+  // Sort allTags by usage count descending
+  const sortedTags = [...allTags].sort((a, b) => (tagStats[b.name] || 0) - (tagStats[a.name] || 0));
+
+  // New handleTagDeleted function
+  const handleTagDeleted = () => {
+    // Implementation of handleTagDeleted function
   };
 
   return (
@@ -701,11 +705,13 @@ export default function SuperBankPage() {
         />
         {/* Tag filter pills section below controls */}
         <TagFilterPills
-          allTags={allTags}
+          allTags={sortedTags}
           tagFilters={tagFilters}
           onToggleTag={tagName => setTagFilters(filters => filters.includes(tagName) ? filters.filter(t => t !== tagName) : [...filters, tagName])}
           onClear={() => setTagFilters([])}
-          onTagDeleted={handleTagDeleted}
+          onTagDeleted={() => handleTagDeleted()}
+          onApplyTagToAll={handleApplyTagToAllFromMenu}
+          tagStats={tagStats}
         />
         {/* Tagging controls above table */}
         {selectedRows.size > 0 && (

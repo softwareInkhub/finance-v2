@@ -1,16 +1,17 @@
-"use client";
-import { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
-import Modal from "../../../../../components/Modals/Modal";
-import StatementPreviewModal from '../../../../../components/Modals/StatementPreviewModal';
-import TransactionPreviewModal from '../../../../../components/Modals/TransactionPreviewModal';
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import Modal from '../../components/Modals/Modal';
+import StatementPreviewModal from '../../components/Modals/StatementPreviewModal';
+import TransactionPreviewModal from '../../components/Modals/TransactionPreviewModal';
 import { RiFileList3Line, RiUpload2Line, RiDeleteBin6Line, RiPriceTag3Line, RiExchangeDollarLine } from 'react-icons/ri';
-import Link from "next/link";
-import TransactionTable from '../../../../../components/TransactionTable';
-import TaggingControls from '../../../../../components/TaggingControls';
-import AnalyticsSummary from '../../../../../components/AnalyticsSummary';
-import TransactionFilterBar from '../../../../../components/TransactionFilterBar';
-import TagFilterPills from '../../../../../components/TagFilterPills';
+import TransactionTable from '../../components/TransactionTable';
+import TaggingControls from '../../components/TaggingControls';
+import AnalyticsSummary from '../../components/AnalyticsSummary';
+import TransactionFilterBar from '../../components/TransactionFilterBar';
+import TagFilterPills from '../../components/TagFilterPills';
 
 interface Statement {
   id: string;
@@ -41,8 +42,15 @@ interface Transaction {
   accountId?: string;
 }
 
-export default function StatementsPage() {
-  const { bankId, accountId } = useParams();
+interface StatementsPageProps {
+  bankId?: string;
+  accountId?: string;
+}
+
+export default function StatementsPage({ bankId: propBankId, accountId: propAccountId }: StatementsPageProps = {}) {
+  const searchParams = useSearchParams();
+  const bankId = propBankId || searchParams.get('bankId');
+  const accountId = propAccountId || searchParams.get('accountId');
   const [statements, setStatements] = useState<Statement[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -50,6 +58,7 @@ export default function StatementsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewStatementId, setPreviewStatementId] = useState<string | null>(null);
   const [selectedStatementId, setSelectedStatementId] = useState<string | null>(null);
   const [tab, setTab] = useState<'statements' | 'transactions'>('statements');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -71,9 +80,11 @@ export default function StatementsPage() {
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
   const [tagFilters, setTagFilters] = useState<string[]>([]);
   const [transactionHeaders, setTransactionHeaders] = useState<string[]>([]);
+  const [uploadTags, setUploadTags] = useState('');
 
   useEffect(() => {
     const fetchStatements = async () => {
+      if (!accountId) return;
       try {
         setError(null);
         const userId = localStorage.getItem("userId") || "";
@@ -85,7 +96,7 @@ export default function StatementsPage() {
         setError("Failed to fetch statements");
       }
     };
-    if (accountId) fetchStatements();
+    fetchStatements();
   }, [accountId]);
 
   useEffect(() => {
@@ -126,6 +137,7 @@ export default function StatementsPage() {
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!bankId || !accountId) return;
     setIsUploading(true);
     setError(null);
     const file = fileInputRef.current?.files?.[0];
@@ -137,10 +149,11 @@ export default function StatementsPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('bankId', String(bankId));
-      formData.append('accountId', String(accountId));
+      formData.append('bankId', bankId);
+      formData.append('accountId', accountId);
       formData.append('fileName', fileName.trim() ? fileName.trim() : file.name);
       formData.append('userId', localStorage.getItem("userId") || "");
+      formData.append('tags', uploadTags);
       const res = await fetch('/api/statement/upload', {
         method: 'POST',
         body: formData,
@@ -154,6 +167,7 @@ export default function StatementsPage() {
       setStatements(prev => [...prev, newStatement]);
       setIsModalOpen(false);
       setFileName('');
+      setUploadTags('');
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload statement');
@@ -255,25 +269,6 @@ export default function StatementsPage() {
     return true;
   });
 
-  // Summary stats
-  const amountKey = Object.keys(transactions[0] || {}).find(k => k.toLowerCase().includes('amount'));
-  const totalAmount = amountKey ? filteredTransactions.reduce((sum, tx) => {
-    const val = (tx as any)[amountKey];
-    let num = 0;
-    if (typeof val === 'string') num = parseFloat(val.replace(/,/g, '')) || 0;
-    else if (typeof val === 'number') num = val;
-    return sum + num;
-  }, 0).toLocaleString() : undefined;
-  const allBankIds = new Set(filteredTransactions.map(tx => tx.bankId));
-  const allAccountIds = new Set(filteredTransactions.map(tx => tx.accountId));
-  let tagged = 0, untagged = 0;
-  filteredTransactions.forEach(tx => {
-    const tags = (tx.tags || []) as Tag[];
-    if (Array.isArray(tags) && tags.length > 0) tagged++; else untagged++;
-  });
-  const totalTags = new Set(filteredTransactions.flatMap(tx => (Array.isArray(tx.tags) ? tx.tags.map(t => t.name) : []))).size;
-
-  // Update headers when filteredTransactions change, but only if changed
   useEffect(() => {
     if (tab === 'transactions' && filteredTransactions.length > 0) {
       const headers = Array.from(new Set(filteredTransactions.flatMap(tx => Object.keys(tx)))).filter(key => key !== 'id' && key !== 'transactionData');
@@ -290,81 +285,125 @@ export default function StatementsPage() {
   };
 
   return (
-    <div className="min-h-screen  py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
+    <div className="min-h-screen py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
       {/* Breadcrumb Navigation */}
       <nav className="text-sm mb-4 flex items-center gap-2 text-gray-600">
         <Link href="/" className="hover:underline">Home</Link>
         <span>/</span>
-        <Link href="/banks" className="hover:underline">Banks</Link>
+        <Link href="/pages/banks" className="hover:underline">Banks</Link>
         <span>/</span>
-        {bankId ? (
-          <span className="font-semibold">{bankName || 'Bank'}</span>
-        ) : (
-          <span>Bank</span>
-        )}
+        <Link href={`/pages/accounts?bankId=${bankId}`} className="hover:underline">{bankName || 'Bank'}</Link>
         <span>/</span>
-        {bankId ? (
-          <Link href={`/banks/${bankId}/accounts`} className="hover:underline">{accountName || 'Account'}</Link>
-        ) : (
-          <span>Account</span>
-        )}
+        <Link href={`/pages/statements?bankId=${bankId}&accountId=${accountId}`} className="hover:underline">{accountName || 'Account'}</Link>
         <span>/</span>
-        <span className="font-semibold text-blue-700">{tab === 'transactions' ? 'Transactions' : 'Statements'}</span>
+        <span className="font-semibold text-blue-700">Files</span>
       </nav>
       <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
-        <div className="flex gap-2 sm:gap-4 border-b mb-4 overflow-x-auto">
-          <button
-            className={`px-3 sm:px-4 py-2 font-semibold transition-all whitespace-nowrap ${tab === 'statements' ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/40 rounded-t' : 'text-gray-600 hover:bg-gray-100 rounded-t'}`}
-            onClick={() => setTab('statements')}
-          >
-            <span className="inline-flex items-center gap-1"><RiFileList3Line /> Files</span>
-          </button>
-          <button
-            className={`px-3 sm:px-4 py-2 font-semibold transition-all whitespace-nowrap ${tab === 'transactions' ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/40 rounded-t' : 'text-gray-600 hover:bg-gray-100 rounded-t'}`}
-            onClick={() => setTab('transactions')}
-          >
-            <span className="inline-flex items-center gap-1"><RiExchangeDollarLine /> Transactions</span>
-          </button>
-        </div>
-        
         <div className="flex flex-row justify-between items-center gap-2 sm:gap-4 mb-2">
           <div className="flex items-center gap-2">
             <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl sm:text-2xl shadow">
               <RiFileList3Line />
             </div>
+            <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Files</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            {/* Tab Switching */}
+            <div className="flex rounded-lg border border-gray-200 p-1 bg-gray-50">
+              <button
+                onClick={() => setTab('statements')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  tab === 'statements'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Files
+              </button>
+              <button
+                onClick={() => setTab('transactions')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  tab === 'transactions'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Transactions
+              </button>
+            </div>
             {tab === 'statements' && (
-              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Files</h1>
-            )}
-            {tab === 'transactions' && (
-              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Transactions</h1>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 sm:px-5 py-2 rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold w-auto"
+              >
+                <RiUpload2Line className="text-lg sm:text-xl" />
+                <span className="hidden sm:block">Upload File</span>
+              </button>
             )}
           </div>
-          {tab === 'statements' && (
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 sm:px-5 py-2 rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold w-auto"
-            >
-              <RiUpload2Line className="text-lg sm:text-xl" />
-              <span className="hidden sm:block">Upload File</span>
-            </button>
-          )}
         </div>
         {error && <div className="text-red-600 mb-2">{error}</div>}
-        
-        {tab === 'statements' && (
+        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Upload File">
+          <form onSubmit={handleUpload} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">File Name (optional)</label>
+              <input
+                type="text"
+                value={fileName}
+                onChange={e => setFileName(e.target.value)}
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Tags (comma separated)</label>
+              <input
+                type="text"
+                value={uploadTags}
+                onChange={e => setUploadTags(e.target.value)}
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2"
+                placeholder="e.g. salary, business"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">CSV File</label>
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".csv"
+                className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2"
+                required
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isUploading}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+            >
+              {isUploading ? 'Uploading...' : 'Upload File'}
+            </button>
+          </form>
+        </Modal>
+
+        {tab === 'statements' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
             {statements.length === 0 ? (
               <div className="col-span-full text-center py-8 sm:py-12 text-gray-500">
                 No files uploaded yet. Click &quot;Upload File&quot; to get started.
               </div>
             ) : (
-              statements.map(statement => (
+              statements.map((statement) => (
                 <div
                   key={statement.id}
                   className="relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden cursor-pointer"
                   onClick={() => {
                     setPreviewUrl(statement.s3FileUrl);
-                    setSelectedStatementId(statement.id);
+                    setPreviewStatementId(statement.id);
                     setPreviewOpen(true);
                   }}
                 >
@@ -375,80 +414,59 @@ export default function StatementsPage() {
                     <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-lg sm:text-xl shadow">
                       <RiFileList3Line />
                     </span>
-                    {statement.fileName || `File ${statement.id}`}
+                    {statement.fileName || 'File'}
                   </h3>
                   <div className="mt-3 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2">
-                    {statement.tags.map(tag => (
-                      <span key={statement.id + '-' + tag} className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium">
+                    {statement.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium"
+                      >
                         <RiPriceTag3Line className="text-blue-400" /> {tag}
                       </span>
                     ))}
                   </div>
-                  <button
-                    className="absolute top-2 right-2 text-red-600 hover:text-red-800 bg-white rounded-full p-1.5 sm:p-2 shadow transition-all hover:scale-110"
-                    title="Delete Statement"
-                    onClick={e => { e.stopPropagation(); handleDeleteStatement(statement.id, statement.s3FileUrl); }}
-                  >
-                    <RiDeleteBin6Line size={16} className="sm:text-lg" />
-                  </button>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDeleteStatement(statement.id, statement.s3FileUrl); }}
+                      className="px-3 py-1 text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                    >
+                      <RiDeleteBin6Line />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
           </div>
-        )}
-        
-        {tab === 'transactions' && (
-          <div>
-            <AnalyticsSummary
-              totalTransactions={filteredTransactions.length}
-              totalAmount={totalAmount}
-              totalBanks={allBankIds.size}
-              totalAccounts={allAccountIds.size}
-              tagged={tagged}
-              untagged={untagged}
-              totalTags={totalTags}
-              showAmount={!!amountKey}
-              showTagStats={true}
-            />
+        ) : (
+          <div className="space-y-6">
+            {/* Transaction Filters */}
             <TransactionFilterBar
               search={search}
               onSearchChange={setSearch}
               dateRange={dateRange}
               onDateRangeChange={setDateRange}
-              onDownload={() => {
-                if (selectedRows.size === 0) return;
-                const rows = Array.from(selectedRows).map(id => filteredTransactions.find((tx) => tx.id === id)).filter(Boolean);
-                const headers = Object.keys(filteredTransactions[0] || {}).filter(k => k !== 'id' && k !== 'transactionData');
-                const csv = [headers.join(",")].concat(
-                  rows.map((row: any) =>
-                    headers.map((sh) => {
-                      const val = (row as any)[sh];
-                      if (Array.isArray(val)) return val.map((v: any) => (typeof v === 'object' && v !== null && 'name' in v ? v.name : String(v))).join('; ');
-                      if (typeof val === 'object' && val !== null && 'name' in val) return val.name;
-                      if (typeof val === 'string' || typeof val === 'number') return String(val);
-                      return '';
-                    }).join(",")
-                  )
-                ).join("\n");
-                const blob = new Blob([csv], { type: "text/csv" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = "transactions-selected.csv";
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              downloadDisabled={selectedRows.size === 0}
+              onDownload={() => {}}
             />
+            
+            {/* Tag Filters */}
             <TagFilterPills
-              allTags={allTags}
+              allTags={Array.isArray(allTags) ? allTags : []}
               tagFilters={tagFilters}
-              onToggleTag={tagName => setTagFilters(filters => filters.includes(tagName) ? filters.filter(t => t !== tagName) : [...filters, tagName])}
+              onToggleTag={tagName => {
+                setTagFilters(prev =>
+                  prev.includes(tagName)
+                    ? prev.filter(t => t !== tagName)
+                    : [...prev, tagName]
+                );
+              }}
               onClear={() => setTagFilters([])}
             />
+
+            {/* Tagging Controls */}
             {selectedRows.size > 0 && (
               <TaggingControls
-                allTags={allTags}
+                allTags={Array.isArray(allTags) ? allTags : []}
                 selectedTagId={selectedTagId}
                 onTagChange={setSelectedTagId}
                 onAddTag={handleAddTag}
@@ -458,89 +476,71 @@ export default function StatementsPage() {
                 tagSuccess={tagSuccess}
               />
             )}
-            <TransactionTable
-              rows={filteredTransactions.map(({ transactionData, ...rest }) => rest)}
-              headers={transactionHeaders}
-              onReorderHeaders={handleReorderHeaders}
-              selectedRows={new Set(filteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
-              selectAll={selectAll}
-              onRowSelect={idx => {
-                const tx = filteredTransactions[idx];
-                if (tx) handleRowSelect(tx.id);
-              }}
-              onSelectAll={handleSelectAll}
-              loading={loadingTransactions}
-              error={transactionsError}
-            />
+
+            {/* Analytics Summary */}
+            {tab === 'transactions' && (
+              (() => {
+                // Compute summary stats for AnalyticsSummary
+                const amountKey = filteredTransactions.length > 0 ? Object.keys(filteredTransactions[0]).find(k => k.toLowerCase().includes('amount')) : undefined;
+                const totalAmount = amountKey ? filteredTransactions.reduce((sum, tx) => {
+                  const val = (tx as any)[amountKey];
+                  let num = 0;
+                  if (typeof val === 'string') num = parseFloat(val.replace(/,/g, '')) || 0;
+                  else if (typeof val === 'number') num = val;
+                  return sum + num;
+                }, 0).toLocaleString() : undefined;
+                const allBankIds = new Set(filteredTransactions.map(tx => tx.bankId));
+                const allAccountIds = new Set(filteredTransactions.map(tx => tx.accountId));
+                let tagged = 0, untagged = 0;
+                filteredTransactions.forEach(tx => {
+                  const tags = (tx.tags || []) as Tag[];
+                  if (Array.isArray(tags) && tags.length > 0) tagged++; else untagged++;
+                });
+                const totalTags = new Set(filteredTransactions.flatMap(tx => (Array.isArray(tx.tags) ? tx.tags.map(t => t.name) : []))).size;
+                return (
+                  <AnalyticsSummary
+                    totalTransactions={filteredTransactions.length}
+                    totalAmount={totalAmount}
+                    totalBanks={allBankIds.size}
+                    totalAccounts={allAccountIds.size}
+                    tagged={tagged}
+                    untagged={untagged}
+                    totalTags={totalTags}
+                    showAmount={!!amountKey}
+                    showTagStats={true}
+                  />
+                );
+              })()
+            )}
+
+            {/* Transaction Table */}
+            {tab === 'transactions' && (
+              <TransactionTable
+                rows={filteredTransactions.map(({ transactionData, ...rest }) => rest)}
+                headers={transactionHeaders}
+                selectedRows={new Set(filteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
+                onRowSelect={idx => {
+                  const tx = filteredTransactions[idx];
+                  if (tx) handleRowSelect(tx.id);
+                }}
+                onSelectAll={handleSelectAll}
+                selectAll={selectAll}
+                loading={loadingTransactions}
+                error={transactionsError}
+                onReorderHeaders={handleReorderHeaders}
+              />
+            )}
           </div>
         )}
-        
-        <StatementPreviewModal
-          isOpen={previewOpen}
-          onClose={() => setPreviewOpen(false)}
-          s3FileUrl={previewUrl}
-          statementId={selectedStatementId}
-          bankId={statements.find(s => s.id === selectedStatementId)?.bankId || null}
-          accountId={statements.find(s => s.id === selectedStatementId)?.accountId || null}
-          fileName={statements.find(s => s.id === selectedStatementId)?.fileName || ''}
-        />
-        
-        <TransactionPreviewModal
-          isOpen={transactionPreviewOpen}
-          onClose={() => setTransactionPreviewOpen(false)}
-          transactionId={transactionPreviewUrl}
-          transactionData={transactions.find(tx => tx.id === transactionPreviewUrl)?.transactionData || []}
-          fileName={transactions.find(tx => tx.id === transactionPreviewUrl)?.fileName || ''}
-        />
-
-        {/* Upload Statement Modal */}
-        {isModalOpen && (
-          <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Upload File">
-            <form onSubmit={handleUpload} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">File Name</label>
-                <input
-                  type="text"
-                  value={fileName}
-                  onChange={e => setFileName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2"
-                  placeholder="Optional: Enter a file name"
-                  disabled={isUploading}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">CSV File</label>
-                <input
-                  type="file"
-                  accept=".csv"
-                  ref={fileInputRef}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2"
-                  required
-                  disabled={isUploading}
-                />
-              </div>
-              {error && <div className="text-red-600 mb-2">{error}</div>}
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-                  onClick={() => setIsModalOpen(false)}
-                  disabled={isUploading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                  disabled={isUploading}
-                >
-                  {isUploading ? 'Uploading...' : 'Upload File'}
-                </button>
-              </div>
-            </form>
-          </Modal>
-        )}
       </div>
+      <StatementPreviewModal
+        isOpen={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        s3FileUrl={previewUrl}
+        statementId={previewStatementId}
+        bankId={bankId}
+        accountId={accountId}
+      />
     </div>
   );
 } 

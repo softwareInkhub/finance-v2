@@ -61,7 +61,28 @@ export async function DELETE(request: Request) {
   try {
     const { id } = await request.json();
     if (!id) return NextResponse.json({ error: 'Tag id required' }, { status: 400 });
+    // 1. Delete the tag itself
     await docClient.send(new DeleteCommand({ TableName: TABLES.TAGS, Key: { id } }));
+
+    // 2. Remove this tag from all transactions
+    // Fetch all transactions
+    const txResult = await docClient.send(new ScanCommand({ TableName: TABLES.TRANSACTIONS || 'transactions' }));
+    const transactions = Array.isArray(txResult.Items) ? txResult.Items : [];
+    // For each transaction, if it has this tag, remove it and update
+    const updatePromises = transactions.map(async (tx) => {
+      if (!Array.isArray(tx.tags) || tx.tags.length === 0) return;
+      const newTags = tx.tags.filter((t) => t.id !== id);
+      if (newTags.length === tx.tags.length) return; // no change
+      await docClient.send(new UpdateCommand({
+        TableName: TABLES.TRANSACTIONS || 'transactions',
+        Key: { id: tx.id },
+        UpdateExpression: 'SET #tags = :tags',
+        ExpressionAttributeNames: { '#tags': 'tags' },
+        ExpressionAttributeValues: { ':tags': newTags },
+      }));
+    });
+    await Promise.all(updatePromises);
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting tag:', error);

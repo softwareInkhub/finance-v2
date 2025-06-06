@@ -52,7 +52,7 @@ export default function Sidebar({ onItemClick }: SidebarProps) {
         bg-white/60 backdrop-blur-2xl border-r border-blue-100 text-gray-900 h-screen transition-all duration-300
         ${isCollapsed ? 'w-16' : 'w-64'}
         ${isMobile ? 'w-64' : ''}
-        shadow-2xl 
+         
       `}
     >
       <div className="p-3 flex justify-between items-center border-b border-blue-100">

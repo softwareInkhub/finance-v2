@@ -21,53 +21,82 @@ const SlicedPreviewModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
   data: string[][];
-  onSave: () => void;
+  onSave: (duplicateCheckFields: string[]) => void;
   saving: boolean;
   saveError: string | null;
   startRow: number;
-}> = ({ isOpen, onClose, data, onSave, saving, saveError }) => (
-  <Modal isOpen={isOpen} onClose={onClose} title="Sliced Transactions Preview">
-    <div className="overflow-x-auto max-h-[70vh]">
-      <table className="min-w-full border text-sm">
-        {data.length > 0 && (
-          <thead>
-            <tr>
-              {data[0].map((cell, j) => (
-                <th key={j} className="border px-2 py-1 font-bold bg-gray-100">{cell}</th>
-              ))}
-            </tr>
-          </thead>
-        )}
-        <tbody>
-          {data.slice(1).map((row, i) => (
-            <tr key={i}>
-              {row.map((cell, j) => (
-                <td key={j} className="border px-2 py-1 whitespace-nowrap">{cell}</td>
-              ))}
-            </tr>
+}> = ({ isOpen, onClose, data, onSave, saving, saveError }) => {
+  const [selectedFields, setSelectedFields] = React.useState<string[]>(() =>
+    data.length > 0 ? data[0].slice(0, 3) : [] // default: first 3 fields
+  );
+  useEffect(() => {
+    if (data.length > 0) setSelectedFields(data[0].slice(0, 3));
+  }, [data]);
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Sliced Transactions Preview">
+      <div className="mb-2">
+        <div className="font-semibold mb-1">Select fields to check for duplicate transactions:</div>
+        <div className="flex flex-wrap gap-2 mb-2">
+          {data.length > 0 && data[0].map((header, idx) => (
+            <label key={header + '-' + idx} className="flex items-center gap-1 text-xs bg-gray-100 px-2 py-1 rounded cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedFields.includes(header + '-' + idx)}
+                onChange={e => {
+                  setSelectedFields(fields =>
+                    e.target.checked
+                      ? [...fields, header + '-' + idx]
+                      : fields.filter(f => f !== header + '-' + idx)
+                  );
+                }}
+              />
+              {header}
+            </label>
           ))}
-        </tbody>
-      </table>
-    </div>
-    <div className="flex justify-end mt-4 space-x-2">
-      <button
-        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        onClick={onSave}
-        disabled={saving}
-      >
-        {saving ? 'Saving...' : 'Save'}
-      </button>
-      <button
-        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-        onClick={onClose}
-        disabled={saving}
-      >
-        Cancel
-      </button>
-    </div>
-    {saveError && <div className="text-red-600 mt-2">{saveError}</div>}
-  </Modal>
-);
+        </div>
+      </div>
+      <div className="overflow-x-auto max-h-[70vh]">
+        <table className="min-w-full border text-sm">
+          {data.length > 0 && (
+            <thead>
+              <tr>
+                {data[0].map((cell, j) => (
+                  <th key={j} className="border px-2 py-1 font-bold bg-gray-100">{cell}</th>
+                ))}
+              </tr>
+            </thead>
+          )}
+          <tbody>
+            {data.slice(1).map((row, i) => (
+              <tr key={i}>
+                {row.map((cell, j) => (
+                  <td key={j} className="border px-2 py-1 whitespace-nowrap">{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end mt-4 space-x-2">
+        <button
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          onClick={() => onSave(selectedFields)}
+          disabled={saving || selectedFields.length === 0}
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+          onClick={onClose}
+          disabled={saving}
+        >
+          Cancel
+        </button>
+      </div>
+      {saveError && <div className="text-red-600 mt-2">{saveError}</div>}
+    </Modal>
+  );
+};
 
 const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, onClose, s3FileUrl, statementId, bankId, accountId, fileName }) => {
   const [data, setData] = useState<string[][]>([]);
@@ -83,6 +112,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
   const [selectionStep, setSelectionStep] = useState<'header' | 'transactions'>('header');
   const [bankName, setBankName] = useState<string>("");
   const [accountName, setAccountName] = useState<string>("");
+  const [duplicateCheckFields, setDuplicateCheckFields] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isOpen || !s3FileUrl) return;
@@ -147,7 +177,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
     setSaveError(null);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (fields?: string[]) => {
     if (startRow === null || endRow === null || headerRow === null || !s3FileUrl || !statementId || !bankId || !accountId) return;
     setSaving(true);
     setSaveError(null);
@@ -167,6 +197,11 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
       const rows = filteredRows.map(row => [...row, accountId, accountName, bankId, bankName]);
       const finalSliced = [header, ...rows];
       const csv = Papa.unparse(finalSliced);
+      const dupFields = (fields || duplicateCheckFields).map(f => {
+        // f is header + '-' + idx, so split and take the header
+        const dashIdx = f.lastIndexOf('-');
+        return dashIdx !== -1 ? f.slice(0, dashIdx) : f;
+      });
       // Call API to save the sliced transaction
       const res = await fetch('/api/transaction/slice', {
         method: 'POST',
@@ -183,6 +218,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
           userId: localStorage.getItem("userId") || "",
           bankName,
           accountName,
+          duplicateCheckFields: dupFields,
         })
       });
       if (!res.ok) {
@@ -194,6 +230,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
       setEndRow(null);
       setHeaderRow(null);
       setSelectionStep('header');
+      setDuplicateCheckFields([]);
       alert('Transaction slice saved successfully!');
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save transaction slice');
@@ -377,7 +414,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
           onClose={() => setShowSliceModal(false)}
           data={[data[headerRow], ...data.slice(startRow, endRow + 1)]}
           startRow={startRow}
-          onSave={handleSave}
+          onSave={fields => { setDuplicateCheckFields(fields); handleSave(fields); }}
           saving={saving}
           saveError={saveError}
         />
