@@ -29,14 +29,14 @@ export async function GET(request: Request) {
 // POST /api/bank-header
 export async function POST(request: Request) {
   try {
-    const { bankName, bankId, header, tag, mapping } = await request.json();
+    const { bankName, bankId, header, tag, mapping, conditions } = await request.json();
     if (!bankName || !Array.isArray(header)) {
       return NextResponse.json({ error: 'bankName and header[] are required' }, { status: 400 });
     }
     await docClient.send(
       new PutCommand({
         TableName: TABLE_NAME,
-        Item: { id: bankName, bankId: bankId || null, header, tag: tag || null, mapping: mapping || null },
+        Item: { id: bankName, bankId: bankId || null, header, tag: tag || null, mapping: mapping || null, conditions: conditions || null },
       })
     );
     return NextResponse.json({ success: true });

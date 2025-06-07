@@ -24,6 +24,9 @@ interface TransactionTableProps {
   error?: string | null;
   onRemoveTag?: (rowIdx: number, tagId: string) => void;
   onReorderHeaders?: (newHeaders: string[]) => void;
+  transactions?: any[];
+  bankMappings?: any;
+  getValueForColumn?: (tx: any, bankId: string, columnName: string) => any;
 }
 
 const DEFAULT_WIDTH = 140;
@@ -39,6 +42,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   error,
   onRemoveTag,
   onReorderHeaders,
+  transactions,
+  bankMappings,
+  getValueForColumn,
 }) => {
   // Column widths state
   const [columnWidths, setColumnWidths] = useState<{ [header: string]: number }>(
@@ -146,52 +152,52 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, idx) => (
-              <tr key={idx} data-row-idx={idx}>
-                <td className="border px-2 py-1 text-center" style={{ width: 40 }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedRows.has(idx)}
-                    onChange={() => onRowSelect(idx)}
-                  />
-                </td>
-                <td className="border px-2 py-1 text-center" style={{ width: 40 }}>{idx + 1}</td>
-                {headers.map((sh) => (
-                  <td key={sh} className="border px-2 py-1 whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: columnWidths[sh] || DEFAULT_WIDTH, minWidth: 60, maxWidth: columnWidths[sh] || DEFAULT_WIDTH }}>
-                    {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
-                      <div className="flex gap-1">
-                        {(row[sh] as Tag[]).map((tag, tagIdx: number) => (
-                          <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] group" style={{ background: tag.color, color: '#222' }}>
-                            <RiPriceTag3Line className="inline mr-1" />{tag.name}
-                            {onRemoveTag && (
-                              <button
-                                type="button"
-                                className="ml-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity font-bold focus:outline-none"
-                                title="Remove tag"
-                                onClick={e => { e.stopPropagation(); onRemoveTag(idx, tag.id); }}
-                              >
-                                ×
-                              </button>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    ) : Array.isArray(row[sh]) ? (
-                      (() => {
-                        const arr = row[sh] as unknown[];
-                        if (arr.length > 0 && typeof arr[0] === 'object' && arr[0] !== null && 'name' in arr[0]) {
-                          // Tag[]
-                          return (arr as Tag[]).map(t => t.name).join(', ');
-                        } else {
-                          // (string|number)[]
-                          return (arr as (string | number)[]).join(', ');
-                        }
-                      })()
-                    ) : typeof row[sh] === 'object' && row[sh] !== null && 'name' in row[sh] ? (row[sh] as Tag).name : row[sh]}
+            {rows.map((row, idx) => {
+              // Find the original transaction for this row
+              const tx = transactions ? transactions.find((t: any) => t.id === row.id) : undefined;
+              return (
+                <tr key={idx} data-row-idx={idx}>
+                  <td className="border px-2 py-1 text-center" style={{ width: 40 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedRows.has(idx)}
+                      onChange={() => onRowSelect(idx)}
+                    />
                   </td>
-                ))}
-              </tr>
-            ))}
+                  <td className="border px-2 py-1 text-center" style={{ width: 40 }}>{idx + 1}</td>
+                  {headers.map((sh) => (
+                    <td key={sh} className="border px-2 py-1 whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: columnWidths[sh] || DEFAULT_WIDTH, minWidth: 60, maxWidth: columnWidths[sh] || DEFAULT_WIDTH }}>
+                      {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
+                        <div className="flex gap-1">
+                          {(row[sh] as Tag[]).map((tag, tagIdx: number) => (
+                            <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] group" style={{ background: tag.color, color: '#222' }}>
+                              <RiPriceTag3Line className="inline mr-1" />{tag.name}
+                              {onRemoveTag && (
+                                <button
+                                  type="button"
+                                  className="ml-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity font-bold focus:outline-none"
+                                  title="Remove tag"
+                                  onClick={e => { e.stopPropagation(); onRemoveTag(idx, tag.id); }}
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      ) : getValueForColumn && tx ? (
+                        (() => {
+                          const val = getValueForColumn(tx, tx.bankId, sh);
+                          if (val !== undefined && val !== null && val !== "") return val;
+                          // fallback to mapped row value
+                          return typeof row[sh] === 'object' && row[sh] !== null && 'name' in row[sh] ? (row[sh] as Tag).name : row[sh];
+                        })()
+                      ) : typeof row[sh] === 'object' && row[sh] !== null && 'name' in row[sh] ? (row[sh] as Tag).name : row[sh]}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

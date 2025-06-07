@@ -33,7 +33,7 @@ const SlicedPreviewModal: React.FC<{
     if (data.length > 0) setSelectedFields(data[0].slice(0, 3));
   }, [data]);
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Sliced Transactions Preview">
+  <Modal isOpen={isOpen} onClose={onClose} title="Sliced Transactions Preview">
       <div className="mb-2">
         <div className="font-semibold mb-1">Select fields to check for duplicate transactions:</div>
         <div className="flex flex-wrap gap-2 mb-2">
@@ -55,8 +55,8 @@ const SlicedPreviewModal: React.FC<{
           ))}
         </div>
       </div>
-      <div className="overflow-x-auto max-h-[70vh]">
-        <table className="min-w-full border text-sm">
+    <div className="overflow-x-auto max-h-[70vh]">
+      <table className="min-w-full border text-sm">
           {data.length > 0 && (
             <thead>
               <tr>
@@ -66,36 +66,36 @@ const SlicedPreviewModal: React.FC<{
               </tr>
             </thead>
           )}
-          <tbody>
+        <tbody>
             {data.slice(1).map((row, i) => (
-              <tr key={i}>
-                {row.map((cell, j) => (
-                  <td key={j} className="border px-2 py-1 whitespace-nowrap">{cell}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex justify-end mt-4 space-x-2">
-        <button
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            <tr key={i}>
+              {row.map((cell, j) => (
+                <td key={j} className="border px-2 py-1 whitespace-nowrap">{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div className="flex justify-end mt-4 space-x-2">
+      <button
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           onClick={() => onSave(selectedFields)}
           disabled={saving || selectedFields.length === 0}
-        >
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-        <button
-          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-          onClick={onClose}
-          disabled={saving}
-        >
-          Cancel
-        </button>
-      </div>
-      {saveError && <div className="text-red-600 mt-2">{saveError}</div>}
-    </Modal>
-  );
+      >
+        {saving ? 'Saving...' : 'Save'}
+      </button>
+      <button
+        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+        onClick={onClose}
+        disabled={saving}
+      >
+        Cancel
+      </button>
+    </div>
+    {saveError && <div className="text-red-600 mt-2">{saveError}</div>}
+  </Modal>
+);
 };
 
 const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, onClose, s3FileUrl, statementId, bankId, accountId, fileName }) => {

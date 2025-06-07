@@ -38,6 +38,7 @@ interface BankHeaderMapping {
   bankId: string;
   header: string[];
   mapping?: { [key: string]: string };
+  conditions?: { [superField: string]: string[] };
 }
 
 export default function SuperBankPage() {
@@ -496,34 +497,26 @@ export default function SuperBankPage() {
   // Summary stats for AnalyticsSummary
   const amountCol = superHeader.find(h => h.toLowerCase().includes('amount'));
   const typeCol = superHeader.find(h => ['type', 'txnType', 'drcr', 'credit/debit'].some(t => h.toLowerCase().includes(t)));
-  const totalAmount = amountCol ? filteredRows.reduce((sum, row) => {
-    const val = row[amountCol];
-    let num = 0;
-    if (typeof val === 'string') num = parseFloat(val.replace(/,/g, '')) || 0;
-    else if (typeof val === 'number') num = val;
-    return sum + num;
-  }, 0).toLocaleString() : undefined;
+  const totalAmount = filteredRows.reduce((sum, row) => {
+    const tx = transactions.find(t => t.id === row.id);
+    if (!tx) return sum;
+    const { amount } = evaluateConditions(tx as unknown as TransactionRow, tx.bankId);
+    return sum + (typeof amount === 'number' && !isNaN(amount) ? amount : 0);
+  }, 0).toLocaleString();
 
   // Calculate DR/CR totals for filteredRows
   let totalCredit = 0, totalDebit = 0;
-  if (amountCol) {
-    filteredRows.forEach(row => {
-      const val = row[amountCol];
-      let num = 0;
-      if (typeof val === 'string') num = parseFloat(val.replace(/,/g, '')) || 0;
-      else if (typeof val === 'number') num = val;
-      if (typeCol && row[typeCol]) {
-        const typeVal = String(row[typeCol]).toLowerCase();
-        if (['cr', 'credit'].includes(typeVal)) totalCredit += Math.abs(num);
-        else if (['dr', 'debit'].includes(typeVal)) totalDebit += Math.abs(num);
-        else if (num > 0) totalCredit += num;
-        else if (num < 0) totalDebit += Math.abs(num);
-      } else {
-        if (num > 0) totalCredit += num;
-        else if (num < 0) totalDebit += Math.abs(num);
-      }
-    });
-  }
+  filteredRows.forEach(row => {
+    const tx = transactions.find(t => t.id === row.id);
+    if (!tx) return;
+    const { amount, type } = evaluateConditions(tx as unknown as TransactionRow, tx.bankId);
+    if (typeof amount === 'number' && !isNaN(amount)) {
+      if (type === 'CR') totalCredit += Math.abs(amount);
+      else if (type === 'DR') totalDebit += Math.abs(amount);
+      else if (amount > 0) totalCredit += amount;
+      else if (amount < 0) totalDebit += Math.abs(amount);
+    }
+  });
   const totalCreditStr = totalCredit ? totalCredit.toLocaleString() : undefined;
   const totalDebitStr = totalDebit ? totalDebit.toLocaleString() : undefined;
 
@@ -576,6 +569,86 @@ export default function SuperBankPage() {
   const handleTagDeleted = () => {
     // Implementation of handleTagDeleted function
   };
+
+  // Helper: get conditions for a bankId
+  function getConditionsForBank(bankId: string) {
+    return bankMappings[bankId]?.conditions || {};
+  }
+  // Helper: get amount for a row using conditions
+  function getAmountForRow(row: TransactionRow, bankId: string): string | number | undefined {
+    const conditions = getConditionsForBank(bankId);
+    if (conditions && conditions.Amount && Array.isArray(conditions.Amount)) {
+      for (const field of conditions.Amount) {
+        const val = row[field];
+        if (
+          (typeof val === 'string' && val.trim() !== '') ||
+          (typeof val === 'number' && !isNaN(val))
+        ) {
+          return val;
+        }
+      }
+    }
+    // fallback: use mapped 'Amount' field or undefined
+    const fallback = row['Amount'];
+    if ((typeof fallback === 'string' && fallback.trim() !== '') || (typeof fallback === 'number' && !isNaN(fallback))) {
+      return fallback;
+    }
+    return undefined;
+  }
+
+  // Helper: evaluate conditions for a row and bankId
+  function evaluateConditions(row: TransactionRow, bankId: string): { amount: number | undefined, type: string | undefined } {
+    const rawConds = bankMappings[bankId]?.conditions;
+    const conditions = Array.isArray(rawConds) ? rawConds : [];
+    for (const cond of conditions) {
+      const val = row[cond.if.field];
+      if (
+        (cond.if.op === 'present' && val && val.toString().trim() !== '') ||
+        (cond.if.op === 'not_present' && (!val || val.toString().trim() === ''))
+      ) {
+        // Evaluate Amount (support -field for negative)
+        let amount: number | undefined = undefined;
+        if (typeof cond.then.Amount === 'string' && cond.then.Amount.startsWith('-')) {
+          const field = cond.then.Amount.slice(1);
+          const v = row[field];
+          if (typeof v === 'string') amount = -parseFloat(v);
+          else if (typeof v === 'number') amount = -v;
+        } else if (typeof cond.then.Amount === 'string') {
+          const v = row[cond.then.Amount];
+          if (typeof v === 'string') amount = parseFloat(v);
+          else if (typeof v === 'number') amount = v;
+        }
+        return { amount, type: cond.then.Type };
+      }
+    }
+    return { amount: undefined, type: undefined };
+  }
+
+  // Helper: get value for any column using per-bank conditions
+  function getValueForColumn(tx: Transaction, bankId: string, columnName: string) {
+    const rawConds = bankMappings[bankId]?.conditions;
+    const conditions = Array.isArray(rawConds) ? rawConds : [];
+    for (const cond of conditions) {
+      if (cond.then && cond.then[columnName] !== undefined) {
+        const val = tx[cond.if.field];
+        if (
+          (cond.if.op === 'present' && val && val.toString().trim() !== '') ||
+          (cond.if.op === 'not_present' && (!val || val.toString().trim() === ''))
+        ) {
+          let result = cond.then[columnName];
+          if (typeof result === 'string' && tx[result] !== undefined) return tx[result];
+          if (typeof result === 'string' && result.startsWith('-') && tx[result.slice(1)] !== undefined) {
+            const v = tx[result.slice(1)];
+            if (typeof v === 'string') return -parseFloat(v);
+            if (typeof v === 'number') return -v;
+          }
+          return result;
+        }
+      }
+    }
+    // Fallback: mapped field or raw value
+    return tx[columnName] !== undefined ? tx[columnName] : '';
+  }
 
   return (
     <div className="min-h-screen py-4 sm:py-6 px-2 sm:px-4">
@@ -765,6 +838,9 @@ export default function SuperBankPage() {
             error={error}
             onRemoveTag={handleRemoveTag}
             onReorderHeaders={handleReorderHeaders}
+            transactions={transactions}
+            bankMappings={bankMappings}
+            getValueForColumn={getValueForColumn}
           />
         </div>
       </div>

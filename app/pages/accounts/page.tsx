@@ -165,6 +165,7 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
   const [showMapping, setShowMapping] = useState(false);
   const [superHeaders, setSuperHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<{ [key: string]: string }>({});
+  const [conditions, setConditions] = useState<any[]>([]);
   const [mappingLoading, setMappingLoading] = useState(false);
   const [mappingError, setMappingError] = useState<string | null>(null);
   const [mappingSuccess, setMappingSuccess] = useState<string | null>(null);
@@ -179,7 +180,7 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
       });
   }, []);
 
-  // Fetch mapping if present
+  // Fetch mapping and conditions if present
   useEffect(() => {
     if (!bankId || !bankName) return;
     fetch(`/api/bank-header?bankName=${encodeURIComponent(bankName)}`)
@@ -187,12 +188,32 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
       .then(data => {
         if (data && data.mapping) setMapping(data.mapping);
         else setMapping({});
+        if (data && data.conditions && Array.isArray(data.conditions)) setConditions(data.conditions);
+        else setConditions([]);
       });
   }, [bankId, bankName]);
 
-  const handleMappingChange = (bankHeader: string, superHeader: string) => {
-    setMapping(m => ({ ...m, [bankHeader]: superHeader }));
-  };
+  // --- Condition UI helpers ---
+  const [newCond, setNewCond] = useState({
+    ifField: '',
+    ifOp: 'present',
+    thenAmount: '',
+    thenType: 'CR',
+  });
+  function addCondition() {
+    if (!newCond.ifField || !newCond.thenAmount) return;
+    setConditions(prev => [
+      ...prev,
+      {
+        if: { field: newCond.ifField, op: newCond.ifOp },
+        then: { Amount: newCond.thenAmount, Type: newCond.thenType }
+      }
+    ]);
+    setNewCond({ ifField: '', ifOp: 'present', thenAmount: '', thenType: 'CR' });
+  }
+  function removeCondition(idx: number) {
+    setConditions(prev => prev.filter((_, i) => i !== idx));
+  }
 
   const handleSaveMapping = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,7 +224,7 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
       const res = await fetch('/api/bank-header', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bankName, bankId, header: bankHeader, mapping }),
+        body: JSON.stringify({ bankName, bankId, header: bankHeader, mapping, conditions }),
       });
       if (!res.ok) throw new Error('Failed to save mapping');
       setMappingSuccess('Mapping saved!');
@@ -417,6 +438,49 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
             <Modal isOpen={showMapping} onClose={() => setShowMapping(false)} title={`Map to Super Bank Header`}>
               <form onSubmit={handleSaveMapping} className="space-y-4">
                 <div className="flex flex-col gap-3">
+                  <div className="font-semibold text-blue-700">Advanced Amount/Type Conditions</div>
+                  {conditions.map((cond, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-white border border-blue-100 rounded px-2 py-1 text-xs">
+                      <span>If</span>
+                      <select value={cond.if.field} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, field: e.target.value } } : c))}>
+                        <option value="">Select field</option>
+                        {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
+                      </select>
+                      <select value={cond.if.op} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, op: e.target.value } } : c))}>
+                        <option value="present">is present</option>
+                        <option value="not_present">is not present</option>
+                      </select>
+                      <span>then Amount =</span>
+                      <input type="text" value={cond.then.Amount} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, then: { ...c.then, Amount: e.target.value } } : c))} className="border rounded px-1 w-24" placeholder="e.g. Deposit Amt." />
+                      <span>, Type =</span>
+                      <select value={cond.then.Type} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, then: { ...c.then, Type: e.target.value } } : c))}>
+                        <option value="CR">CR</option>
+                        <option value="DR">DR</option>
+                      </select>
+                      <button type="button" onClick={() => removeCondition(idx)} className="ml-2 text-red-500">✕</button>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2 mt-2">
+                    <span>If</span>
+                    <select value={newCond.ifField} onChange={e => setNewCond(nc => ({ ...nc, ifField: e.target.value }))}>
+                      <option value="">Select field</option>
+                      {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
+                    </select>
+                    <select value={newCond.ifOp} onChange={e => setNewCond(nc => ({ ...nc, ifOp: e.target.value }))}>
+                      <option value="present">is present</option>
+                      <option value="not_present">is not present</option>
+                    </select>
+                    <span>then Amount =</span>
+                    <input type="text" value={newCond.thenAmount} onChange={e => setNewCond(nc => ({ ...nc, thenAmount: e.target.value }))} className="border rounded px-1 w-24" placeholder="e.g. Deposit Amt. or -Withdrawal Amt." />
+                    <span>, Type =</span>
+                    <select value={newCond.thenType} onChange={e => setNewCond(nc => ({ ...nc, thenType: e.target.value }))}>
+                      <option value="CR">CR</option>
+                      <option value="DR">DR</option>
+                    </select>
+                    <button type="button" onClick={addCondition} className="ml-2 px-2 py-1 bg-blue-500 text-white rounded">Add</button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 mt-2">
                   {bankHeader.map((bh, idx) => (
                     <div key={idx} className="flex items-center gap-2">
                       <span className="min-w-[120px] px-2 py-1 bg-blue-100 rounded text-blue-700 text-xs font-medium border border-blue-200">{bh}</span>
@@ -424,7 +488,7 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
                       <select
                         className="rounded border px-2 py-1 text-sm"
                         value={mapping[bh] || ''}
-                        onChange={e => handleMappingChange(bh, e.target.value)}
+                        onChange={e => setMapping(m => ({ ...m, [bh]: e.target.value }))}
                       >
                         <option value="">Ignore</option>
                         {superHeaders.map((sh, i) => (
