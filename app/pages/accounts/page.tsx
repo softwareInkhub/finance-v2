@@ -448,7 +448,8 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
                 <div className="flex flex-col gap-3">
                   <div className="font-semibold text-blue-700">Advanced Field Conditions</div>
                   {conditions.map((cond, idx) => (
-                    <div key={idx} className="flex flex-col gap-1 bg-white border border-blue-100 rounded px-2 py-1 text-xs">
+                    <div key={idx} className="flex flex-col gap-2 bg-white border border-blue-100 rounded px-2 py-1 text-xs mb-2">
+
                       <div className="flex items-center gap-2">
                         <span>If</span>
                         <select value={cond.if.field} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, field: e.target.value } } : c))}>
@@ -460,40 +461,55 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
                           <option value="not_present">is not present</option>
                         </select>
                         <span>then</span>
-                        {Object.entries(cond.then).map(([field, value], i) => (
-                          <span key={field + i} className="ml-2">
-                            <b>{field}</b> = {String(value)}
+                        {Object.entries(cond.then).map(([field, value], pairIdx) => (
+                          <span key={pairIdx} className="flex items-center gap-1">
+                            <select
+                              value={field}
+                              onChange={e => {
+                                const newField = e.target.value;
+                                setConditions(prev => prev.map((c, i) =>
+                                  i === idx
+                                    ? { ...c, then: { ...Object.fromEntries(Object.entries(c.then).map(([f, v], j) => j === pairIdx ? [newField, v] : [f, v])) } }
+                                    : c
+                                ));
+                              }}
+                            >
+                              <option value="">Select field</option>
+                              {superHeaders.map((sh, i) => <option key={i} value={sh}>{sh}</option>)}
+                            </select>
+                            <span>=</span>
+                            <input
+                              type="text"
+                              value={value}
+                              onChange={e => {
+                                const newValue = e.target.value;
+                                setConditions(prev => prev.map((c, i) =>
+                                  i === idx
+                                    ? { ...c, then: { ...c.then, [field]: newValue } }
+                                    : c
+                                ));
+                              }}
+                              className="border rounded px-1 w-24"
+                              placeholder="Value or field ref"
+                            />
                           </span>
                         ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConditions(prev => prev.map((c, i) =>
+                              i === idx
+                                ? { ...c, then: { ...c.then, "": "" } }
+                                : c
+                            ));
+                          }}
+                          className="ml-2 px-2 py-1 bg-blue-500 text-white rounded"
+                        >
+                          Add field
+                        </button>
                         <button type="button" onClick={() => removeCondition(idx)} className="ml-2 text-red-500">✕</button>
                       </div>
-                    </div>
-                  ))}
-                  <div className="flex flex-col gap-1 mt-2 border border-blue-100 rounded p-2">
-                    <div className="flex flex-wrap gap-2 items-center mt-2">
-                      <span>If</span>
-                      <select value={newCond.ifField} onChange={e => setNewCond(nc => ({ ...nc, ifField: e.target.value }))}>
-                        <option value="">Select field</option>
-                        {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
-                      </select>
-                      <select value={newCond.ifOp} onChange={e => setNewCond(nc => ({ ...nc, ifOp: e.target.value }))}>
-                        <option value="present">is present</option>
-                        <option value="not_present">is not present</option>
-                      </select>
-                      <span>then</span>
-                      {newCond.then.map((t, i) => (
-                        <span key={i} className="flex items-center gap-1">
-                          <select value={t.field} onChange={e => updateThenField(i, 'field', e.target.value)}>
-                            <option value="">Select Super Bank Field</option>
-                            {superHeaders.map((sh, idx) => <option key={idx} value={sh}>{sh}</option>)}
-                          </select>
-                          =
-                          <input type="text" value={t.value} onChange={e => updateThenField(i, 'value', e.target.value)} className="border rounded px-1 w-24" placeholder="e.g. Deposit Amt. or -Withdrawal Amt." />
-                          <button type="button" onClick={() => removeThenField(i)} className="text-red-500">✕</button>
-                        </span>
-                      ))}
-                      <button type="button" onClick={addThenField} className="px-2 py-1 bg-blue-500 text-white rounded">+ Field</button>
-                      <button type="button" onClick={addCondition} className="px-2 py-1 bg-green-500 text-white rounded">Add Condition</button>
+
                     </div>
                   </div>
                 </div>
