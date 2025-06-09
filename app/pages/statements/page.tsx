@@ -511,10 +511,14 @@ export default function StatementsPage({ bankId: propBankId, accountId: propAcco
             {/* Transaction Table */}
             {tab === 'transactions' && (
               <TransactionTable
-                rows={filteredTransactions.map(({ transactionData: _, ...rest }) => ({
-                  ...rest,
-                  tags: rest.tags || []
-                }))}
+                rows={filteredTransactions.map(tx => {
+                  // Remove transactionData property without referencing it directly
+                  const filtered = Object.fromEntries(Object.entries(tx).filter(([key]) => key !== 'transactionData'));
+                  return {
+                    ...filtered,
+                    tags: tx.tags || []
+                  };
+                })}
                 headers={transactionHeaders}
                 selectedRows={new Set(filteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
                 onRowSelect={idx => {
