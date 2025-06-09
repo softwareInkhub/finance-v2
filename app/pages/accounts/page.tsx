@@ -197,30 +197,22 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
   const [newCond, setNewCond] = useState({
     ifField: '',
     ifOp: 'present',
-    then: [{ field: 'Amount', value: '' }],
+    thenAmount: '',
+    thenType: 'CR',
   });
   function addCondition() {
-    if (!newCond.ifField || newCond.then.some(t => !t.field || !t.value)) return;
+    if (!newCond.ifField || !newCond.thenAmount) return;
     setConditions(prev => [
       ...prev,
       {
         if: { field: newCond.ifField, op: newCond.ifOp },
-        then: Object.fromEntries(newCond.then.map(t => [t.field, t.value]))
+        then: { Amount: newCond.thenAmount, Type: newCond.thenType }
       }
     ]);
-    setNewCond({ ifField: '', ifOp: 'present', then: [{ field: 'Amount', value: '' }] });
+    setNewCond({ ifField: '', ifOp: 'present', thenAmount: '', thenType: 'CR' });
   }
   function removeCondition(idx: number) {
     setConditions(prev => prev.filter((_, i) => i !== idx));
-  }
-  function addThenField() {
-    setNewCond(nc => ({ ...nc, then: [...nc.then, { field: '', value: '' }] }));
-  }
-  function removeThenField(i: number) {
-    setNewCond(nc => ({ ...nc, then: nc.then.filter((_, idx) => idx !== i) }));
-  }
-  function updateThenField(i: number, key: 'field' | 'value', value: string) {
-    setNewCond(nc => ({ ...nc, then: nc.then.map((t, idx) => idx === i ? { ...t, [key]: value } : t) }));
   }
 
   const handleSaveMapping = async (e: React.FormEvent) => {
@@ -446,10 +438,9 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
             <Modal isOpen={showMapping} onClose={() => setShowMapping(false)} title={`Map to Super Bank Header`}>
               <form onSubmit={handleSaveMapping} className="space-y-4">
                 <div className="flex flex-col gap-3">
-                  <div className="font-semibold text-blue-700">Advanced Field Conditions</div>
+                  <div className="font-semibold text-blue-700">Advanced Amount/Type Conditions</div>
                   {conditions.map((cond, idx) => (
                     <div key={idx} className="flex flex-col gap-2 bg-white border border-blue-100 rounded px-2 py-1 text-xs mb-2">
-
                       <div className="flex items-center gap-2">
                         <span>If</span>
                         <select value={cond.if.field} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, field: e.target.value } } : c))}>
@@ -509,8 +500,26 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
                         </button>
                         <button type="button" onClick={() => removeCondition(idx)} className="ml-2 text-red-500">✕</button>
                       </div>
-
                     </div>
+                  ))}
+                  <div className="flex items-center gap-2 mt-2">
+                    <span>If</span>
+                    <select value={newCond.ifField} onChange={e => setNewCond(nc => ({ ...nc, ifField: e.target.value }))}>
+                      <option value="">Select field</option>
+                      {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
+                    </select>
+                    <select value={newCond.ifOp} onChange={e => setNewCond(nc => ({ ...nc, ifOp: e.target.value }))}>
+                      <option value="present">is present</option>
+                      <option value="not_present">is not present</option>
+                    </select>
+                    <span>then Amount =</span>
+                    <input type="text" value={newCond.thenAmount} onChange={e => setNewCond(nc => ({ ...nc, thenAmount: e.target.value }))} className="border rounded px-1 w-24" placeholder="e.g. Deposit Amt. or -Withdrawal Amt." />
+                    <span>, Type =</span>
+                    <select value={newCond.thenType} onChange={e => setNewCond(nc => ({ ...nc, thenType: e.target.value }))}>
+                      <option value="CR">CR</option>
+                      <option value="DR">DR</option>
+                    </select>
+                    <button type="button" onClick={addCondition} className="ml-2 px-2 py-1 bg-blue-500 text-white rounded">Add</button>
                   </div>
                 </div>
                 <div className="flex flex-col gap-3 mt-2">
