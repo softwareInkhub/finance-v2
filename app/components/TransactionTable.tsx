@@ -1,16 +1,16 @@
 import React, { useRef, useState } from 'react';
 import { RiPriceTag3Line } from 'react-icons/ri';
+import { Transaction, TransactionRow, Tag } from '../types/transaction';
 
-interface Tag {
+interface BankMapping {
   id: string;
-  name: string;
-  color?: string;
-}
-
-interface TransactionRow {
-  [key: string]: string | number | Tag[] | undefined;
-  tags?: Tag[];
-  id?: string;
+  bankId: string;
+  header: string[];
+  mapping?: { [key: string]: string };
+  conditions?: Array<{
+    if: { field: string; op: string };
+    then: { [key: string]: string };
+  }>;
 }
 
 interface TransactionTableProps {
@@ -24,9 +24,9 @@ interface TransactionTableProps {
   error?: string | null;
   onRemoveTag?: (rowIdx: number, tagId: string) => void;
   onReorderHeaders?: (newHeaders: string[]) => void;
-  transactions?: any[];
-  bankMappings?: any;
-  getValueForColumn?: (tx: any, bankId: string, columnName: string) => any;
+  transactions?: Transaction[];
+  bankMappings?: { [bankId: string]: BankMapping };
+  getValueForColumn?: (tx: Transaction, bankId: string, columnName: string) => string | number | undefined;
 }
 
 const DEFAULT_WIDTH = 140;
@@ -43,7 +43,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onRemoveTag,
   onReorderHeaders,
   transactions,
-  bankMappings,
   getValueForColumn,
 }) => {
   // Column widths state
@@ -66,6 +65,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     document.addEventListener('mouseup', handleMouseUp);
     e.preventDefault();
   };
+
   const handleMouseMove = (e: MouseEvent) => {
     if (!resizingCol.current) return;
     const delta = e.clientX - startX.current;
@@ -74,6 +74,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       [resizingCol.current!]: Math.max(60, startWidth.current + delta),
     }));
   };
+
   const handleMouseUp = () => {
     resizingCol.current = null;
     document.removeEventListener('mousemove', handleMouseMove);
@@ -83,10 +84,12 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const handleDragStart = (header: string) => {
     setDraggedHeader(header);
   };
-  const handleDragOver = (e: React.DragEvent, header: string) => {
+
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
+
   const handleDrop = (e: React.DragEvent, targetHeader: string) => {
     e.preventDefault();
     if (!draggedHeader || draggedHeader === targetHeader) return;
@@ -99,6 +102,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     setDraggedHeader(null);
     if (typeof onReorderHeaders === 'function') onReorderHeaders(newHeaders);
   };
+
   const handleDragEnd = () => {
     setDraggedHeader(null);
   };
@@ -133,7 +137,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   style={{ width: columnWidths[sh] || DEFAULT_WIDTH, minWidth: 60, maxWidth: columnWidths[sh] || DEFAULT_WIDTH }}
                   draggable
                   onDragStart={() => handleDragStart(sh)}
-                  onDragOver={e => handleDragOver(e, sh)}
+                  onDragOver={handleDragOver}
                   onDrop={e => handleDrop(e, sh)}
                   onDragEnd={handleDragEnd}
                 >
@@ -153,8 +157,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
           </thead>
           <tbody>
             {rows.map((row, idx) => {
-              // Find the original transaction for this row
-              const tx = transactions ? transactions.find((t: any) => t.id === row.id) : undefined;
+              const tx = transactions?.find(t => t.id === row.id);
               return (
                 <tr key={idx} data-row-idx={idx}>
                   <td className="border px-2 py-1 text-center" style={{ width: 40 }}>
@@ -188,11 +191,22 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       ) : getValueForColumn && tx ? (
                         (() => {
                           const val = getValueForColumn(tx, tx.bankId, sh);
-                          if (val !== undefined && val !== null && val !== "") return val;
-                          // fallback to mapped row value
-                          return typeof row[sh] === 'object' && row[sh] !== null && 'name' in row[sh] ? (row[sh] as Tag).name : row[sh];
+                          if (val !== undefined && val !== null && val !== "") return String(val);
+                          const rowValue = row[sh];
+                          if (typeof rowValue === 'object' && rowValue !== null && 'name' in rowValue && 'id' in rowValue) {
+                            return String((rowValue as unknown as Tag).name);
+                          }
+                          return rowValue !== undefined && rowValue !== null ? String(rowValue) : '';
                         })()
-                      ) : typeof row[sh] === 'object' && row[sh] !== null && 'name' in row[sh] ? (row[sh] as Tag).name : row[sh]}
+                      ) : (
+                        (() => {
+                          const rowValue = row[sh];
+                          if (typeof rowValue === 'object' && rowValue !== null && 'name' in rowValue && 'id' in rowValue) {
+                            return String((rowValue as unknown as Tag).name);
+                          }
+                          return rowValue !== undefined && rowValue !== null ? String(rowValue) : '';
+                        })()
+                      )}
                     </td>
                   ))}
                 </tr>

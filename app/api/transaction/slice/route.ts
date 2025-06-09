@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, s3, S3_BUCKET, TABLES } from '../../aws-client';
+import { docClient, TABLES } from '../../aws-client';
 import { v4 as uuidv4 } from 'uuid';
 import Papa from 'papaparse';
 
@@ -9,7 +8,7 @@ export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const { csv, statementId, startRow, endRow, bankId, accountId, tags = [], fileName, userId, bankName, accountName, duplicateCheckFields } = await request.json();
+    const { csv, statementId, startRow, endRow, bankId, accountId, fileName, userId, bankName, accountName, duplicateCheckFields } = await request.json();
     if (!csv || !statementId || startRow == null || endRow == null || !bankId || !accountId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -43,7 +42,7 @@ export async function POST(request: Request) {
     // Save each row as a separate transaction item
     const putPromises = rows.map((row) => {
       // Clean row and add extra fields
-      const cleaned: Record<string, any> = {};
+      const cleaned: Record<string, string | string[]> = {};
       for (const key in row) {
         if (key && key.trim() !== '' && key !== 'tag' && key !== 'tags') cleaned[key] = row[key];
       }

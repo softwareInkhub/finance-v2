@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { ScanCommand, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 import { docClient, TABLES } from '../../aws-client';
 
 // GET /api/transactions/all?userId=xxx
@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
   try {
-    let params: any = {
+    const params: ScanCommandInput = {
       TableName: TABLES.TRANSACTIONS || 'transactions',
     };
     if (userId) {

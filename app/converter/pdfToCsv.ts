@@ -1,7 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+
+interface TextItem {
+  str: string;
+  transform: number[];
+  width: number;
+  height: number;
+  dir: string;
+  fontName: string;
+  hasEOL: boolean;
+}
+
+
 
 export async function convertPdfToCsv(file: File): Promise<string> {
   try {
@@ -15,7 +27,10 @@ export async function convertPdfToCsv(file: File): Promise<string> {
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
-      const text = textContent.items.map((item: any) => item.str).join(' ');
+      const text = textContent.items
+        .filter((item): item is TextItem => 'str' in item)
+        .map(item => item.str)
+        .join(' ');
       const escapedText = text.replace(/,/g, ';');
       csvContent += `${i},${escapedText}\\n`;
     }

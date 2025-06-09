@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     // Build the update expression dynamically
     const updateFields = [];
     const exprAttrNames: Record<string, string> = {};
-    const exprAttrValues: Record<string, any> = {};
+    const exprAttrValues: Record<string, string | number | string[]> = {};
     if (transactionData) {
       for (const f of Object.keys(transactionData)) {
         updateFields.push(f);

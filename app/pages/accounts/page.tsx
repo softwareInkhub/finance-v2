@@ -20,6 +20,25 @@ interface AccountsPageProps {
   onAccountClick?: (account: Account, bankId: string) => void;
 }
 
+interface Condition {
+  if: {
+    field: string;
+    op: 'present' | 'not_present';
+  };
+  then: {
+    [key: string]: string;
+  };
+}
+
+type ConditionOp = 'present' | 'not_present';
+
+interface NewCondition {
+  ifField: string;
+  ifOp: ConditionOp;
+  thenAmount: string;
+  thenType: string;
+}
+
 export default function AccountsPage({ bankId: propBankId, onAccountClick }: AccountsPageProps) {
   const searchParams = useSearchParams();
   const bankId = propBankId || searchParams.get('bankId');
@@ -165,7 +184,7 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
   const [showMapping, setShowMapping] = useState(false);
   const [superHeaders, setSuperHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<{ [key: string]: string }>({});
-  const [conditions, setConditions] = useState<any[]>([]);
+  const [conditions, setConditions] = useState<Condition[]>([]);
   const [mappingLoading, setMappingLoading] = useState(false);
   const [mappingError, setMappingError] = useState<string | null>(null);
   const [mappingSuccess, setMappingSuccess] = useState<string | null>(null);
@@ -194,26 +213,62 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
   }, [bankId, bankName]);
 
   // --- Condition UI helpers ---
-  const [newCond, setNewCond] = useState({
+  const [newCond, setNewCond] = useState<NewCondition>({
     ifField: '',
     ifOp: 'present',
     thenAmount: '',
     thenType: 'CR',
   });
+
   function addCondition() {
     if (!newCond.ifField || !newCond.thenAmount) return;
-    setConditions(prev => [
-      ...prev,
-      {
-        if: { field: newCond.ifField, op: newCond.ifOp },
-        then: { Amount: newCond.thenAmount, Type: newCond.thenType }
-      }
-    ]);
-    setNewCond({ ifField: '', ifOp: 'present', thenAmount: '', thenType: 'CR' });
+    const condition: Condition = {
+      if: { field: newCond.ifField, op: newCond.ifOp },
+      then: { Amount: newCond.thenAmount, Type: newCond.thenType }
+    };
+    setConditions(prev => [...prev, condition]);
+    setNewCond({
+      ifField: '',
+      ifOp: 'present',
+      thenAmount: '',
+      thenType: 'CR',
+    });
   }
+
   function removeCondition(idx: number) {
     setConditions(prev => prev.filter((_, i) => i !== idx));
   }
+
+  const handleConditionChange = (idx: number, field: string, value: string) => {
+    setConditions(prev => prev.map((c, i) => {
+      if (i !== idx) return c;
+      if (field === 'op') {
+        return {
+          ...c,
+          if: {
+            ...c.if,
+            op: value as ConditionOp
+          }
+        };
+      }
+      if (field === 'field') {
+        return {
+          ...c,
+          if: {
+            ...c.if,
+            field: value
+          }
+        };
+      }
+      return {
+        ...c,
+        then: {
+          ...c.then,
+          [field]: value
+        }
+      };
+    }));
+  };
 
   const handleSaveMapping = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -443,11 +498,11 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
                     <div key={idx} className="flex flex-col gap-2 bg-white border border-blue-100 rounded px-2 py-1 text-xs mb-2">
                       <div className="flex items-center gap-2">
                         <span>If</span>
-                        <select value={cond.if.field} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, field: e.target.value } } : c))}>
+                        <select value={cond.if.field} onChange={e => handleConditionChange(idx, 'field', e.target.value)}>
                           <option value="">Select field</option>
                           {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
                         </select>
-                        <select value={cond.if.op} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, op: e.target.value } } : c))}>
+                        <select value={cond.if.op} onChange={e => handleConditionChange(idx, 'op', e.target.value)}>
                           <option value="present">is present</option>
                           <option value="not_present">is not present</option>
                         </select>
@@ -458,11 +513,7 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
                               value={field}
                               onChange={e => {
                                 const newField = e.target.value;
-                                setConditions(prev => prev.map((c, i) =>
-                                  i === idx
-                                    ? { ...c, then: { ...Object.fromEntries(Object.entries(c.then).map(([f, v], j) => j === pairIdx ? [newField, v] : [f, v])) } }
-                                    : c
-                                ));
+                                handleConditionChange(idx, field, newField);
                               }}
                             >
                               <option value="">Select field</option>
@@ -471,14 +522,10 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
                             <span>=</span>
                             <input
                               type="text"
-                              value={value}
+                              value={value as string}
                               onChange={e => {
                                 const newValue = e.target.value;
-                                setConditions(prev => prev.map((c, i) =>
-                                  i === idx
-                                    ? { ...c, then: { ...c.then, [field]: newValue } }
-                                    : c
-                                ));
+                                handleConditionChange(idx, field, newValue);
                               }}
                               className="border rounded px-1 w-24"
                               placeholder="Value or field ref"
@@ -488,11 +535,8 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
                         <button
                           type="button"
                           onClick={() => {
-                            setConditions(prev => prev.map((c, i) =>
-                              i === idx
-                                ? { ...c, then: { ...c.then, "": "" } }
-                                : c
-                            ));
+                            handleConditionChange(idx, 'Amount', '');
+                            handleConditionChange(idx, 'Type', 'CR');
                           }}
                           className="ml-2 px-2 py-1 bg-blue-500 text-white rounded"
                         >
@@ -508,7 +552,11 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
                       <option value="">Select field</option>
                       {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
                     </select>
-                    <select value={newCond.ifOp} onChange={e => setNewCond(nc => ({ ...nc, ifOp: e.target.value }))}>
+                    <select value={newCond.ifOp} onChange={e => setNewCond(prev => ({ 
+                      ...prev, 
+                      ifOp: e.target.value as ConditionOp 
+                    }))}
+                    >
                       <option value="present">is present</option>
                       <option value="not_present">is not present</option>
                     </select>

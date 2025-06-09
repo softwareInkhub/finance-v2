@@ -18,6 +18,7 @@ import { convertPdfToTxt } from '../converter/pdfToTxt';
 import { convertPdfToXlsx } from '../converter/pdfToXlsx';
 import FileUploader from './FileUploader';
 import React from 'react';
+import Image from 'next/image';
 
 const conversionMap: Record<string, string[]> = {
   TXT: ['PDF', 'DOC', 'CSV', 'HTML', 'RTF', 'XML', 'JSON'],
@@ -88,7 +89,17 @@ function Preview({ result, outputType }: { result: string | Blob | null, outputT
     // Show image preview if result is a Blob (single image)
     if (result instanceof Blob) {
       const url = URL.createObjectURL(result);
-      return <img src={url} alt="Preview" className="max-h-48 mx-auto rounded shadow" onLoad={() => URL.revokeObjectURL(url)} />;
+      return (
+        <div className="relative w-full h-48">
+          <Image
+            src={url}
+            alt="Preview"
+            fill
+            className="object-contain rounded shadow"
+            onLoad={() => URL.revokeObjectURL(url)}
+          />
+        </div>
+      );
     }
     return <div className="text-gray-500">Image(s) ready. Download to view all.</div>;
   }
@@ -155,7 +166,7 @@ export default function Converter() {
   const handleDownload = () => {
     if (!result) return;
     let blob: Blob;
-    let filename = `converted.${outputType.toLowerCase()}`;
+    const filename = `converted.${outputType.toLowerCase()}`;
     if (result instanceof Blob) {
       blob = result;
     } else {

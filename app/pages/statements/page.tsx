@@ -5,8 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Modal from '../../components/Modals/Modal';
 import StatementPreviewModal from '../../components/Modals/StatementPreviewModal';
-import TransactionPreviewModal from '../../components/Modals/TransactionPreviewModal';
-import { RiFileList3Line, RiUpload2Line, RiDeleteBin6Line, RiPriceTag3Line, RiExchangeDollarLine } from 'react-icons/ri';
+import { RiFileList3Line, RiUpload2Line, RiDeleteBin6Line, RiPriceTag3Line } from 'react-icons/ri';
 import TransactionTable from '../../components/TransactionTable';
 import TaggingControls from '../../components/TaggingControls';
 import AnalyticsSummary from '../../components/AnalyticsSummary';
@@ -40,6 +39,7 @@ interface Transaction {
   tags?: Tag[];
   bankId?: string;
   accountId?: string;
+  [key: string]: string | number | Tag[] | undefined | Record<string, string | Tag[] | undefined>[];
 }
 
 interface StatementsPageProps {
@@ -59,19 +59,16 @@ export default function StatementsPage({ bankId: propBankId, accountId: propAcco
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewStatementId, setPreviewStatementId] = useState<string | null>(null);
-  const [selectedStatementId, setSelectedStatementId] = useState<string | null>(null);
   const [tab, setTab] = useState<'statements' | 'transactions'>('statements');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
-  const [transactionPreviewOpen, setTransactionPreviewOpen] = useState(false);
-  const [transactionPreviewUrl, setTransactionPreviewUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState('');
   const [bankName, setBankName] = useState("");
   const [accountName, setAccountName] = useState("");
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
-  const [allTags, setAllTags] = useState<any[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [selectedTagId, setSelectedTagId] = useState<string>("");
   const [tagging, setTagging] = useState(false);
   const [tagError, setTagError] = useState<string | null>(null);
@@ -222,9 +219,8 @@ export default function StatementsPage({ bankId: propBankId, accountId: propAcco
       await Promise.all(Array.from(selectedRows).map(async (id) => {
         const tx = transactions.find(t => t.id === id);
         if (!tx) return;
-        const txObj = tx as Record<string, any>;
-        const tags = Array.isArray(txObj.tags) ? [...txObj.tags] : [];
-        if (!tags.some((t: any) => t.id === tagObj.id)) tags.push(tagObj);
+        const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
+        if (!tags.some(t => t.id === tagObj.id)) tags.push(tagObj);
         await fetch('/api/transaction/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -235,7 +231,6 @@ export default function StatementsPage({ bankId: propBankId, accountId: propAcco
       setSelectedTagId("");
       setSelectedRows(new Set());
       setTimeout(() => setTagSuccess(null), 1500);
-      // Optionally, refetch transactions to update UI
     } catch {
       setTagError('Failed to add tag');
     } finally {
@@ -255,7 +250,7 @@ export default function StatementsPage({ bankId: propBankId, accountId: propAcco
     // Date range (if there is a date field)
     const dateKey = Object.keys(tx).find(k => k.toLowerCase().includes('date'));
     if (dateKey && (dateRange.from || dateRange.to)) {
-      const rowDate = (tx as any)[dateKey];
+      const rowDate = tx[dateKey];
       if (typeof rowDate === 'string') {
         let d = rowDate;
         if (/\d{2}\/\d{2}\/\d{4}/.test(d)) {
@@ -483,7 +478,7 @@ export default function StatementsPage({ bankId: propBankId, accountId: propAcco
                 // Compute summary stats for AnalyticsSummary
                 const amountKey = filteredTransactions.length > 0 ? Object.keys(filteredTransactions[0]).find(k => k.toLowerCase().includes('amount')) : undefined;
                 const totalAmount = amountKey ? filteredTransactions.reduce((sum, tx) => {
-                  const val = (tx as any)[amountKey];
+                  const val = tx[amountKey];
                   let num = 0;
                   if (typeof val === 'string') num = parseFloat(val.replace(/,/g, '')) || 0;
                   else if (typeof val === 'number') num = val;
@@ -516,7 +511,10 @@ export default function StatementsPage({ bankId: propBankId, accountId: propAcco
             {/* Transaction Table */}
             {tab === 'transactions' && (
               <TransactionTable
-                rows={filteredTransactions.map(({ transactionData, ...rest }) => rest)}
+                rows={filteredTransactions.map(({ transactionData: _, ...rest }) => ({
+                  ...rest,
+                  tags: rest.tags || []
+                }))}
                 headers={transactionHeaders}
                 selectedRows={new Set(filteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
                 onRowSelect={idx => {

@@ -2,6 +2,18 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 
+interface TextItem {
+  str: string;
+  transform: number[];
+  width: number;
+  height: number;
+  dir: string;
+  fontName: string;
+  hasEOL: boolean;
+}
+
+
+
 export async function convertPdfToHtml(file: File): Promise<string> {
   // Set up the worker (for client-side)
   if (typeof window !== 'undefined') {
@@ -13,7 +25,10 @@ export async function convertPdfToHtml(file: File): Promise<string> {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
-    const text = textContent.items.map((item: any) => item.str).join(' ');
+    const text = textContent.items
+      .filter((item): item is TextItem => 'str' in item)
+      .map(item => item.str)
+      .join(' ');
     html += `<div class="pdf-page"><h2>Page ${i}</h2><p>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p></div>`;
   }
   html += '</body></html>';

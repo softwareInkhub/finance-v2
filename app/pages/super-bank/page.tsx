@@ -1,38 +1,12 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import { FiDownload } from 'react-icons/fi';
-import { RiPriceTag3Line } from 'react-icons/ri';
+
 import AnalyticsSummary from '../../components/AnalyticsSummary';
 import TransactionFilterBar from '../../components/TransactionFilterBar';
 import TagFilterPills from '../../components/TagFilterPills';
 import TaggingControls from '../../components/TaggingControls';
 import TransactionTable from '../../components/TransactionTable';
-
-interface Tag {
-  id: string;
-  name: string;
-  color?: string;
-}
-
-interface TransactionRow {
-  [key: string]: string | number | Tag[] | undefined;
-  tags?: Tag[];
-}
-
-interface Transaction {
-  id: string;
-  statementId: string;
-  bankId: string;
-  accountId: string;
-  startRow?: number;
-  endRow?: number;
-  s3FileUrl?: string;
-  fileName?: string;
-  createdAt?: string;
-  transactionData?: TransactionRow[];
-  tags?: Tag[];
-  [key: string]: any; // Allow dynamic field access
-}
+import { Transaction, TransactionRow, Tag } from '../../types/transaction';
 
 interface Condition {
   if: {
@@ -40,14 +14,12 @@ interface Condition {
     op: 'present' | 'not_present';
   };
   then: {
-    Amount?: string;
-    Type?: string;
-    [key: string]: string | number | undefined;
+    [key: string]: string;
   };
 }
 
 interface BankHeaderMapping {
-  id: string; // bankName
+  id: string;
   bankId: string;
   header: string[];
   mapping?: { [key: string]: string };
@@ -112,11 +84,13 @@ export default function SuperBankPage() {
       .then(res => res.json())
       .then(data => {
         if (data && Array.isArray(data.header)) {
-          setSuperHeader(data.header);
-          setHeaderInputs(data.header);
+          // Ensure 'Tags' is included in the header
+          const header = data.header.includes('Tags') ? data.header : [...data.header, 'Tags'];
+          setSuperHeader(header);
+          setHeaderInputs(header);
         } else {
-          setSuperHeader([]);
-          setHeaderInputs([]);
+          setSuperHeader(['Tags']);
+          setHeaderInputs(['Tags']);
         }
       });
   }, []);
@@ -300,12 +274,22 @@ export default function SuperBankPage() {
       if (superHeader) reverseMap[superHeader] = bankHeader;
     });
     const mappedRow: TransactionRow = {};
-    const txObj = tx as Record<string, any>;
     superHeader.forEach((sh) => {
-      const bankHeader = reverseMap[sh];
-      mappedRow[sh] = bankHeader ? txObj[bankHeader] || txObj[sh] || "" : txObj[sh] || "";
+      if (sh === 'Tags') {
+        const bankTagCol = Object.keys(tx).find(
+          key => key.toLowerCase().includes('tag')
+        );
+        const tags = bankTagCol && Array.isArray(tx[bankTagCol])
+          ? tx[bankTagCol] as Tag[]
+          : [];
+        mappedRow['Tags'] = tags;
+        mappedRow['tags'] = tags;
+      } else {
+        const bankHeader = reverseMap[sh];
+        const value = bankHeader ? tx[bankHeader] : tx[sh];
+        mappedRow[sh] = typeof value === 'string' || typeof value === 'number' ? value : '';
+      }
     });
-    mappedRow.tags = txObj.tags || [];
     mappedRow.id = tx.id;
     return mappedRow;
   });
@@ -319,6 +303,10 @@ export default function SuperBankPage() {
       setHeaderError("Header cannot be empty");
       setHeaderLoading(false);
       return;
+    }
+    // Ensure 'Tags' is included
+    if (!headerArr.includes('Tags')) {
+      headerArr.push('Tags');
     }
     try {
       const res = await fetch("/api/bank-header", {
@@ -347,14 +335,13 @@ export default function SuperBankPage() {
     setHeaderInputs(inputs => inputs.filter((_, i) => i !== idx));
   };
 
-  // Filtered and searched rows
-  const filteredRows = mappedRows.filter((row) => {
-    // Multi-tag filter: show if row has at least one selected tag
-    if (tagFilters.length > 0) {
-      if (!row.tags || !Array.isArray(row.tags) || !row.tags.some((t: Tag) => t && tagFilters.includes(t.name))) {
-        return false;
-      }
-    }
+  // Tag filter logic: filter mappedRows by selected tags first
+  const tagFilteredRows = tagFilters.length > 0
+    ? mappedRows.filter(row => Array.isArray(row.tags) && row.tags.some(t => tagFilters.includes(t.name)))
+    : mappedRows;
+
+  // Then apply search and date filters to tagFilteredRows
+  const filteredRows = tagFilteredRows.filter((row) => {
     // Search
     const searchMatch =
       !search || Object.values(row).some((val) => {
@@ -509,7 +496,6 @@ export default function SuperBankPage() {
   // Filtered and searched rows (already present as filteredRows)
   // Summary stats for AnalyticsSummary
   const amountCol = superHeader.find(h => h.toLowerCase().includes('amount'));
-  const typeCol = superHeader.find(h => ['type', 'txnType', 'drcr', 'credit/debit'].some(t => h.toLowerCase().includes(t)));
   const totalAmount = filteredRows.reduce((sum, row) => {
     const tx = transactions.find(t => t.id === row.id);
     if (!tx) return sum;
@@ -539,10 +525,6 @@ export default function SuperBankPage() {
     if (Array.isArray(tags) && tags.length > 0) tagged++;
     else untagged++;
   });
-  const totalTags = (() => {
-    const tags = filteredRows.flatMap(row => Array.isArray(row.tags) ? row.tags : []);
-    return new Set(tags.map(t => t.name)).size;
-  })();
 
   // Automatically clear tagCreateMsg after 2 seconds
   useEffect(() => {
@@ -563,20 +545,27 @@ export default function SuperBankPage() {
     setTimeout(() => handleApplyTagToAll(), 0); // ensure pendingTag is set before running
   };
 
-  // Compute tag statistics for filteredRows
-  const tagStats: Record<string, number> = {};
+  // Compute tag statistics for filteredRows (for pills and summary)
+  const filteredTagStats: Record<string, number> = {};
   filteredRows.forEach(row => {
     if (Array.isArray(row.tags)) {
       row.tags.forEach(tag => {
         if (tag && tag.name) {
-          tagStats[tag.name] = (tagStats[tag.name] || 0) + 1;
+          filteredTagStats[tag.name] = (filteredTagStats[tag.name] || 0) + 1;
         }
       });
     }
   });
+  // Optionally, ensure all tags show a count (including zero)
+  allTags.forEach(tag => {
+    if (!(tag.name in filteredTagStats)) {
+      filteredTagStats[tag.name] = 0;
+    }
+  });
+  const filteredTotalTags = Object.keys(filteredTagStats).length;
 
-  // Sort allTags by usage count descending
-  const sortedTags = [...allTags].sort((a, b) => (tagStats[b.name] || 0) - (tagStats[a.name] || 0));
+  // Sort allTags by usage count descending (use filteredTagStats for current view)
+  const sortedTags = [...allTags].sort((a, b) => (filteredTagStats[b.name] || 0) - (filteredTagStats[a.name] || 0));
 
   // New handleTagDeleted function
   const handleTagDeleted = () => {
@@ -584,31 +573,7 @@ export default function SuperBankPage() {
   };
 
   // Helper: get conditions for a bankId
-  function getConditionsForBank(bankId: string): Condition[] {
-    return bankMappings[bankId]?.conditions || [];
-  }
-
-  // Helper: get amount for a row using conditions
-  function getAmountForRow(row: TransactionRow, bankId: string): string | number | undefined {
-    const conditions = getConditionsForBank(bankId);
-    for (const condition of conditions) {
-      if (condition.then.Amount) {
-        const val = row[condition.if.field];
-        if (
-          (typeof val === 'string' && val.trim() !== '') ||
-          (typeof val === 'number' && !isNaN(val))
-        ) {
-          return val;
-        }
-      }
-    }
-    // fallback: use mapped 'Amount' field or undefined
-    const fallback = row['Amount'];
-    if ((typeof fallback === 'string' && fallback.trim() !== '') || (typeof fallback === 'number' && !isNaN(fallback))) {
-      return fallback;
-    }
-    return undefined;
-  }
+ 
 
   // Helper: evaluate conditions for a row and bankId
   function evaluateConditions(row: TransactionRow, bankId: string): { amount: number | undefined, type: string | undefined } {
@@ -640,7 +605,7 @@ export default function SuperBankPage() {
   }
 
   // Helper: get value for any column using per-bank conditions
-  function getValueForColumn(tx: Transaction, bankId: string, columnName: string): string {
+  function getValueForColumn(tx: Transaction, bankId: string, columnName: string): string | number | undefined {
     const rawConds = bankMappings[bankId]?.conditions;
     const conditions = Array.isArray(rawConds) ? rawConds : [];
     
@@ -653,19 +618,21 @@ export default function SuperBankPage() {
         ) {
           const result = cond.then[columnName];
           if (typeof result === 'string' && tx[result] !== undefined) {
-            return String(tx[result]);
+            const value = tx[result];
+            return typeof value === 'string' || typeof value === 'number' ? value : undefined;
           }
           if (typeof result === 'string' && result.startsWith('-') && tx[result.slice(1)] !== undefined) {
             const v = tx[result.slice(1)];
-            if (typeof v === 'string') return String(-parseFloat(v));
-            if (typeof v === 'number') return String(-v);
+            if (typeof v === 'string') return -parseFloat(v);
+            if (typeof v === 'number') return -v;
           }
-          return String(result);
+          return result;
         }
       }
     }
     // Fallback: mapped field or raw value
-    return tx[columnName] !== undefined ? String(tx[columnName]) : '';
+    const value = tx[columnName];
+    return typeof value === 'string' || typeof value === 'number' ? value : undefined;
   }
 
   return (
@@ -780,7 +747,7 @@ export default function SuperBankPage() {
             totalAccounts={totalAccounts}
             tagged={tagged}
             untagged={untagged}
-            totalTags={totalTags}
+            totalTags={filteredTotalTags}
             showAmount={!!amountCol}
             showTagStats={superHeader.some(h => h.toLowerCase() === 'tags')}
           />
@@ -802,7 +769,7 @@ export default function SuperBankPage() {
           onClear={() => setTagFilters([])}
           onTagDeleted={() => handleTagDeleted()}
           onApplyTagToAll={handleApplyTagToAllFromMenu}
-          tagStats={tagStats}
+          tagStats={filteredTagStats}
         />
         {/* Tagging controls above table */}
         {selectedRows.size > 0 && (

@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   }
   try {
     let filterExpression = 'accountId = :accountId';
-    let expressionAttributeValues: Record<string, any> = { ':accountId': accountId };
+    const expressionAttributeValues: Record<string, string> = { ':accountId': accountId };
     if (userId) {
       filterExpression += ' AND userId = :userId';
       expressionAttributeValues[':userId'] = userId;
