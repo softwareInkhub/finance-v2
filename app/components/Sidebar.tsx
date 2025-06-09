@@ -37,6 +37,7 @@ export default function Sidebar({ onItemClick }: SidebarProps) {
     { name: 'Dashboard', path: '/dashboard', icon: RiDashboardLine },
     { name: 'Banks', path: '/banks', icon: RiBankLine },
     { name: 'Tags', path: '/tags', icon: RiPriceTag3Line },
+    { name: 'File Converter', path: '/convert-file', icon: RiPriceTag3Line },
   ];
 
   const handleItemClick = () => {

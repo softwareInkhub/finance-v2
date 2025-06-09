@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { Bank } from '../types/aws';
 import CreateBankModal from '../components/Modals/CreateBankModal';
 import { RiBankLine, RiAddLine, RiPriceTag3Line, RiCloseLine } from 'react-icons/ri';

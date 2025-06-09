@@ -31,6 +31,19 @@ interface Transaction {
   createdAt?: string;
   transactionData?: TransactionRow[];
   tags?: Tag[];
+  [key: string]: any; // Allow dynamic field access
+}
+
+interface Condition {
+  if: {
+    field: string;
+    op: 'present' | 'not_present';
+  };
+  then: {
+    Amount?: string;
+    Type?: string;
+    [key: string]: string | number | undefined;
+  };
 }
 
 interface BankHeaderMapping {
@@ -38,7 +51,7 @@ interface BankHeaderMapping {
   bankId: string;
   header: string[];
   mapping?: { [key: string]: string };
-  conditions?: { [superField: string]: string[] };
+  conditions?: Condition[];
 }
 
 export default function SuperBankPage() {
@@ -500,7 +513,7 @@ export default function SuperBankPage() {
   const totalAmount = filteredRows.reduce((sum, row) => {
     const tx = transactions.find(t => t.id === row.id);
     if (!tx) return sum;
-    const { amount } = evaluateConditions(tx as unknown as TransactionRow, tx.bankId);
+    const { amount } = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
     return sum + (typeof amount === 'number' && !isNaN(amount) ? amount : 0);
   }, 0).toLocaleString();
 
@@ -509,7 +522,7 @@ export default function SuperBankPage() {
   filteredRows.forEach(row => {
     const tx = transactions.find(t => t.id === row.id);
     if (!tx) return;
-    const { amount, type } = evaluateConditions(tx as unknown as TransactionRow, tx.bankId);
+    const { amount, type } = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
     if (typeof amount === 'number' && !isNaN(amount)) {
       if (type === 'CR') totalCredit += Math.abs(amount);
       else if (type === 'DR') totalDebit += Math.abs(amount);
@@ -571,15 +584,16 @@ export default function SuperBankPage() {
   };
 
   // Helper: get conditions for a bankId
-  function getConditionsForBank(bankId: string) {
-    return bankMappings[bankId]?.conditions || {};
+  function getConditionsForBank(bankId: string): Condition[] {
+    return bankMappings[bankId]?.conditions || [];
   }
+
   // Helper: get amount for a row using conditions
   function getAmountForRow(row: TransactionRow, bankId: string): string | number | undefined {
     const conditions = getConditionsForBank(bankId);
-    if (conditions && conditions.Amount && Array.isArray(conditions.Amount)) {
-      for (const field of conditions.Amount) {
-        const val = row[field];
+    for (const condition of conditions) {
+      if (condition.then.Amount) {
+        const val = row[condition.if.field];
         if (
           (typeof val === 'string' && val.trim() !== '') ||
           (typeof val === 'number' && !isNaN(val))
@@ -608,13 +622,14 @@ export default function SuperBankPage() {
       ) {
         // Evaluate Amount (support -field for negative)
         let amount: number | undefined = undefined;
-        if (typeof cond.then.Amount === 'string' && cond.then.Amount.startsWith('-')) {
-          const field = cond.then.Amount.slice(1);
+        const amountField = cond.then.Amount;
+        if (typeof amountField === 'string' && amountField.startsWith('-')) {
+          const field = amountField.slice(1);
           const v = row[field];
           if (typeof v === 'string') amount = -parseFloat(v);
           else if (typeof v === 'number') amount = -v;
-        } else if (typeof cond.then.Amount === 'string') {
-          const v = row[cond.then.Amount];
+        } else if (typeof amountField === 'string') {
+          const v = row[amountField];
           if (typeof v === 'string') amount = parseFloat(v);
           else if (typeof v === 'number') amount = v;
         }
@@ -625,9 +640,10 @@ export default function SuperBankPage() {
   }
 
   // Helper: get value for any column using per-bank conditions
-  function getValueForColumn(tx: Transaction, bankId: string, columnName: string) {
+  function getValueForColumn(tx: Transaction, bankId: string, columnName: string): string {
     const rawConds = bankMappings[bankId]?.conditions;
     const conditions = Array.isArray(rawConds) ? rawConds : [];
+    
     for (const cond of conditions) {
       if (cond.then && cond.then[columnName] !== undefined) {
         const val = tx[cond.if.field];
@@ -635,19 +651,21 @@ export default function SuperBankPage() {
           (cond.if.op === 'present' && val && val.toString().trim() !== '') ||
           (cond.if.op === 'not_present' && (!val || val.toString().trim() === ''))
         ) {
-          let result = cond.then[columnName];
-          if (typeof result === 'string' && tx[result] !== undefined) return tx[result];
+          const result = cond.then[columnName];
+          if (typeof result === 'string' && tx[result] !== undefined) {
+            return String(tx[result]);
+          }
           if (typeof result === 'string' && result.startsWith('-') && tx[result.slice(1)] !== undefined) {
             const v = tx[result.slice(1)];
-            if (typeof v === 'string') return -parseFloat(v);
-            if (typeof v === 'number') return -v;
+            if (typeof v === 'string') return String(-parseFloat(v));
+            if (typeof v === 'number') return String(-v);
           }
-          return result;
+          return String(result);
         }
       }
     }
     // Fallback: mapped field or raw value
-    return tx[columnName] !== undefined ? tx[columnName] : '';
+    return tx[columnName] !== undefined ? String(tx[columnName]) : '';
   }
 
   return (

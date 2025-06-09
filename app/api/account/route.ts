@@ -30,7 +30,9 @@ export async function GET(request: Request) {
   }
   try {
     let filterExpression = 'bankId = :bankId';
-    let expressionAttributeValues: Record<string, any> = { ':bankId': bankId };
+    const expressionAttributeValues: Record<string, string | number> = {
+      ':bankId': bankId
+    };
     if (userId) {
       filterExpression += ' AND userId = :userId';
       expressionAttributeValues[':userId'] = userId;
