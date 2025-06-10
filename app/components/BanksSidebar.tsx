@@ -1,5 +1,4 @@
 'use client';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { RiBankLine, RiAccountPinCircleLine, RiArrowDownSLine, RiArrowRightSLine } from 'react-icons/ri';
@@ -16,10 +15,11 @@ interface Account {
 
 interface BanksSidebarProps {
   onSuperBankClick?: () => void;
+  onBankClick?: (bank: Bank) => void;
   onAccountClick?: (account: { id: string; accountHolderName: string }, bankId: string) => void;
 }
 
-export default function BanksSidebar({ onSuperBankClick, onAccountClick }: BanksSidebarProps) {
+export default function BanksSidebar({ onSuperBankClick, onBankClick, onAccountClick }: BanksSidebarProps) {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [accounts, setAccounts] = useState<{ [bankId: string]: Account[] }>({});
   const [expandedBank, setExpandedBank] = useState<string | null>(null);
@@ -38,6 +38,12 @@ export default function BanksSidebar({ onSuperBankClick, onAccountClick }: Banks
       fetch(`/api/account?bankId=${bankId}`)
         .then(res => res.json())
         .then(data => setAccounts(prev => ({ ...prev, [bankId]: Array.isArray(data) ? data : [] })));
+    }
+  };
+
+  const handleBankClick = (bank: Bank) => {
+    if (onBankClick) {
+      onBankClick(bank);
     }
   };
 
@@ -67,7 +73,10 @@ export default function BanksSidebar({ onSuperBankClick, onAccountClick }: Banks
                 <li key={bank.id}>
                   <button
                     className={`flex items-center w-full gap-2 px-2 py-2 rounded hover:bg-blue-50 transition ${pathname.includes(`/banks/${bank.id}`) ? 'bg-blue-50 font-bold text-blue-700' : ''}`}
-                    onClick={() => handleExpand(bank.id)}
+                    onClick={() => {
+                      handleExpand(bank.id);
+                      handleBankClick(bank);
+                    }}
                   >
                     {expandedBank === bank.id ? <RiArrowDownSLine /> : <RiArrowRightSLine />}
                     <RiBankLine />
@@ -80,21 +89,12 @@ export default function BanksSidebar({ onSuperBankClick, onAccountClick }: Banks
                       )}
                       {accounts[bank.id].map(account => (
                         <li key={account.id}>
-                          {onAccountClick ? (
-                            <button
-                              className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 text-xs w-full text-left ${pathname.includes(`/accounts/${account.id}`) ? 'text-blue-700 font-semibold' : ''}`}
-                              onClick={() => onAccountClick(account, bank.id)}
-                            >
-                              <RiAccountPinCircleLine /> {account.accountHolderName}
-                            </button>
-                          ) : (
-                            <Link
-                              href={`/banks/${bank.id}/accounts/${account.id}/statements`}
-                              className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 text-xs ${pathname.includes(`/accounts/${account.id}`) ? 'text-blue-700 font-semibold' : ''}`}
-                            >
-                              <RiAccountPinCircleLine /> {account.accountHolderName}
-                            </Link>
-                          )}
+                          <button
+                            className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 text-xs w-full text-left ${pathname.includes(`/accounts/${account.id}`) ? 'text-blue-700 font-semibold' : ''}`}
+                            onClick={() => onAccountClick && onAccountClick(account, bank.id)}
+                          >
+                            <RiAccountPinCircleLine /> {account.accountHolderName}
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -103,8 +103,6 @@ export default function BanksSidebar({ onSuperBankClick, onAccountClick }: Banks
               ))}
             </ul>
           </li>
-          
-         
         </ul>
       </nav>
     </aside>
