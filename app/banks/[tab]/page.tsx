@@ -1,11 +1,10 @@
 'use client';
-export const dynamic = "force-dynamic";
 
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import AccountsPage from '../../pages/accounts/page';
-import StatementsPage from '../../pages/statements/page';
-import SuperBankPage from '../../pages/super-bank/page';
+import AccountsPage from '../../sub-pages/accounts/page';
+import StatementsPage from '../../sub-pages/statements/page';
+import SuperBankPage from '../../sub-pages/super-bank/page';
 
 function TabContent() {
   const searchParams = useSearchParams();
