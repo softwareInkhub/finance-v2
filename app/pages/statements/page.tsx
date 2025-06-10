@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Modal from '../../components/Modals/Modal';
@@ -42,15 +42,10 @@ interface Transaction {
   [key: string]: string | number | Tag[] | undefined | Record<string, string | Tag[] | undefined>[];
 }
 
-interface StatementsPageProps {
-  bankId?: string;
-  accountId?: string;
-}
-
-export default function StatementsPage({ bankId: propBankId, accountId: propAccountId }: StatementsPageProps = {}) {
+function StatementsContent() {
   const searchParams = useSearchParams();
-  const bankId = propBankId || searchParams.get('bankId');
-  const accountId = propAccountId || searchParams.get('accountId');
+  const bankId = searchParams.get('bankId');
+  const accountId = searchParams.get('accountId');
   const [statements, setStatements] = useState<Statement[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -544,5 +539,13 @@ export default function StatementsPage({ bankId: propBankId, accountId: propAcco
         accountId={accountId}
       />
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <StatementsContent />
+    </Suspense>
   );
 } 

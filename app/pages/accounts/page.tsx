@@ -1,7 +1,8 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Modal from '../../components/Modals/Modal';
 import { RiAccountPinCircleLine, RiAddLine, RiPriceTag3Line, RiEdit2Line } from 'react-icons/ri';
@@ -13,11 +14,6 @@ interface Account {
   accountNumber: string;
   ifscCode: string;
   tags: string[];
-}
-
-interface AccountsPageProps {
-  bankId?: string;
-  onAccountClick?: (account: Account, bankId: string) => void;
 }
 
 interface Condition {
@@ -39,9 +35,10 @@ interface NewCondition {
   thenType: string;
 }
 
-export default function AccountsPage({ bankId: propBankId, onAccountClick }: AccountsPageProps) {
+function AccountsContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const bankId = propBankId || searchParams.get('bankId');
+  const bankId = searchParams.get('bankId');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState({
@@ -620,7 +617,11 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
             accounts.map((account) => (
               <div
                 key={account.id}
-                onClick={() => onAccountClick?.(account, bankId as string)}
+                onClick={() => {
+                  router.push(
+                    `/banks/statements?type=statements&bankId=${account.bankId}&accountId=${account.id}&accountName=${encodeURIComponent(account.accountHolderName)}`
+                  );
+                }}
                 className="cursor-pointer relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
               >
                 <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-4xl sm:text-5xl pointer-events-none select-none rotate-12">
@@ -648,5 +649,13 @@ export default function AccountsPage({ bankId: propBankId, onAccountClick }: Acc
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AccountsPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <AccountsContent />
+    </Suspense>
   );
 } 

@@ -9,7 +9,7 @@ export function convertHtmlToCsv(file: File): Promise<string> {
         const rows = Array.from(div.querySelectorAll('tr'));
         const csv = rows.map(row =>
           Array.from(row.querySelectorAll('td,th'))
-            .map(cell => '"' + cell.innerText.replace(/"/g, '""') + '"')
+            .map(cell => '"' + (cell as HTMLElement).innerText.replace(/"/g, '""') + '"')
             .join(',')
         ).join('\n');
         resolve(csv);
