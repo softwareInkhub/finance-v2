@@ -34,8 +34,9 @@ export default function BanksSidebar({ onSuperBankClick, onBankClick, onAccountC
   // Fetch accounts for a bank when expanded
   const handleExpand = (bankId: string) => {
     setExpandedBank(expandedBank === bankId ? null : bankId);
-    if (!accounts[bankId]) {
-      fetch(`/api/account?bankId=${bankId}`)
+    const userId = typeof window !== "undefined" ? localStorage.getItem('userId') : null;
+    if (!accounts[bankId] && userId) {
+      fetch(`/api/account?bankId=${bankId}&userId=${userId}`)
         .then(res => res.json())
         .then(data => setAccounts(prev => ({ ...prev, [bankId]: Array.isArray(data) ? data : [] })));
     }

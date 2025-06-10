@@ -42,7 +42,13 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
     }
     const fetchAccounts = async () => {
       try {
-        const response = await fetch(`/api/account?bankId=${bankId}`);
+        const userId = localStorage.getItem('userId');
+        if (!userId) {
+          setError('User ID not found');
+          setIsLoading(false);
+          return;
+        }
+        const response = await fetch(`/api/account?bankId=${bankId}&userId=${userId}`);
         if (!response.ok) {
           throw new Error('Failed to fetch accounts');
         }
@@ -85,9 +91,16 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
     e.preventDefault();
     if (!bankId) return;
 
+    const userId = localStorage.getItem('userId');
+    if (!userId) {
+      setError('User ID not found');
+      return;
+    }
+
     const accountData = {
       ...formData,
       bankId,
+      userId,
     };
 
     try {
@@ -158,7 +171,7 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold text-gray-800">Accounts</h2>
         <button

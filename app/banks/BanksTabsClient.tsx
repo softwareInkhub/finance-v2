@@ -191,7 +191,7 @@ export default function BanksTabsClient() {
         </div>
         <div>
           {activeTab === 'overview' && (
-            <div className="space-y-4 sm:space-y-6">
+            <div className="space-y-4 sm:space-y-6 px-5">
               <div className="flex flex-row justify-between items-center gap-2 sm:gap-4 mb-2">
                 <div className="flex items-center gap-2">
                   <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl sm:text-2xl shadow">
