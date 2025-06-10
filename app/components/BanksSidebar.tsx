@@ -1,6 +1,7 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { RiBankLine, RiAccountPinCircleLine, RiArrowDownSLine, RiArrowRightSLine } from 'react-icons/ri';
 
 interface Bank {
@@ -13,12 +14,16 @@ interface Account {
   accountHolderName: string;
 }
 
-export default function BanksSidebar() {
+interface BanksSidebarProps {
+  onSuperBankClick?: () => void;
+  onAccountClick?: (account: { id: string; accountHolderName: string }, bankId: string) => void;
+}
+
+export default function BanksSidebar({ onSuperBankClick, onAccountClick }: BanksSidebarProps) {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [accounts, setAccounts] = useState<{ [bankId: string]: Account[] }>({});
   const [expandedBank, setExpandedBank] = useState<string | null>(null);
   const pathname = usePathname();
-  const router = useRouter();
 
   useEffect(() => {
     fetch('/api/bank')
@@ -50,7 +55,7 @@ export default function BanksSidebar() {
           <li>
             <button
               className={`flex items-center gap-2 px-2 py-2 rounded hover:bg-blue-50 w-full text-left ${typeof window !== 'undefined' && window.location.pathname === '/super-bank' ? 'font-bold text-blue-700' : ''}`}
-              onClick={() => router.push('/sub-pages/super-bank')}
+              onClick={onSuperBankClick}
             >
               <RiBankLine /> Super Bank
             </button>
@@ -75,16 +80,21 @@ export default function BanksSidebar() {
                       )}
                       {accounts[bank.id].map(account => (
                         <li key={account.id}>
-                          <button
-                            className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 text-xs w-full text-left ${pathname.includes(`/accounts/${account.id}`) ? 'text-blue-700 font-semibold' : ''}`}
-                            onClick={() =>
-                              router.push(
-                                `/banks/statements?type=statements&bankId=${bank.id}&accountId=${account.id}&accountName=${encodeURIComponent(account.accountHolderName)}`
-                              )
-                            }
-                          >
-                            <RiAccountPinCircleLine /> {account.accountHolderName}
-                          </button>
+                          {onAccountClick ? (
+                            <button
+                              className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 text-xs w-full text-left ${pathname.includes(`/accounts/${account.id}`) ? 'text-blue-700 font-semibold' : ''}`}
+                              onClick={() => onAccountClick(account, bank.id)}
+                            >
+                              <RiAccountPinCircleLine /> {account.accountHolderName}
+                            </button>
+                          ) : (
+                            <Link
+                              href={`/banks/${bank.id}/accounts/${account.id}/statements`}
+                              className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 text-xs ${pathname.includes(`/accounts/${account.id}`) ? 'text-blue-700 font-semibold' : ''}`}
+                            >
+                              <RiAccountPinCircleLine /> {account.accountHolderName}
+                            </Link>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -93,6 +103,8 @@ export default function BanksSidebar() {
               ))}
             </ul>
           </li>
+          
+         
         </ul>
       </nav>
     </aside>
