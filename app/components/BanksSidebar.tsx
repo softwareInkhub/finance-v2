@@ -1,5 +1,4 @@
 'use client';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { RiBankLine, RiAccountPinCircleLine, RiArrowDownSLine, RiArrowRightSLine } from 'react-icons/ri';
@@ -76,12 +75,16 @@ export default function BanksSidebar() {
                       )}
                       {accounts[bank.id].map(account => (
                         <li key={account.id}>
-                          <Link
-                            href={`/sub-pages/accounts/${account.id}`}
+                          <button
                             className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 text-xs w-full text-left ${pathname.includes(`/accounts/${account.id}`) ? 'text-blue-700 font-semibold' : ''}`}
+                            onClick={() =>
+                              router.push(
+                                `/banks/statements?type=statements&bankId=${bank.id}&accountId=${account.id}&accountName=${encodeURIComponent(account.accountHolderName)}`
+                              )
+                            }
                           >
                             <RiAccountPinCircleLine /> {account.accountHolderName}
-                          </Link>
+                          </button>
                         </li>
                       ))}
                     </ul>
