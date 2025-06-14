@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { 
   RiMenuLine, 
@@ -13,6 +13,14 @@ export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const router = useRouter();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const handleSidebarItemClick = () => {
     setIsMobileMenuOpen(false);
@@ -26,18 +34,29 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="h-16 flex items-center px-4 md:px-6 bg-white/60 backdrop-blur-xl border-b border-blue-100 transition-all duration-300">
-        <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="md:hidden p-2  hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 mr-2 transition-all duration-200 border border-transparent focus:border-blue-400 shadow-sm"
-        >
-          <RiMenuLine className="text-xl text-gray-600" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-lg md:text-xl font-semibold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent drop-shadow-lg select-none">
-            Brmh Fintech
-          </h1>
-        </div>
+      <nav className={`h-16 flex items-center px-4 md:px-6 bg-white/60 backdrop-blur-xl border-b border-blue-100 transition-all duration-300 ${isMobile ? 'fixed top-0 left-0 w-full z-40' : ''}`}>
+        {isMobile ? (
+          <>
+            <button
+              className="mr-2 p-2 md:hidden"
+              onClick={() => setIsMobileMenuOpen(true)}
+              aria-label="Open sidebar"
+            >
+              <RiMenuLine size={28} />
+            </button>
+            <div className="flex-1 flex justify-center">
+              <h1 className="text-lg md:text-xl font-semibold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent drop-shadow-lg select-none">
+                Brmh Fintech
+              </h1>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1">
+            <h1 className="text-lg md:text-xl font-semibold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent drop-shadow-lg select-none">
+              Brmh Fintech
+            </h1>
+          </div>
+        )}
         <div className="flex items-center space-x-2 md:space-x-4">
           <button className="p-2 rounded-full hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 transition-colors duration-200 relative group shadow-sm">
             <RiNotification3Line className="text-xl text-gray-600 group-hover:text-blue-600 transition-colors duration-200" />
@@ -63,19 +82,7 @@ export default function Navbar() {
           </div>
         </div>
       </nav>
-      
-      {/* Mobile Sidebar */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-50">
-          <div 
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
-          <div className="fixed inset-y-0 left-0 w-64 transform transition-transform duration-300 ease-in-out">
-            <Sidebar onItemClick={handleSidebarItemClick} />
-          </div>
-        </div>
-      )}
+      {isMobile && <div className="h-16 w-full" />}
     </>
   );
 } 

@@ -8,6 +8,7 @@ import { RiBankLine, RiAddLine, RiPriceTag3Line, RiCloseLine } from 'react-icons
 import { Bank } from '../types/aws';
 import { useRouter, usePathname } from 'next/navigation';
 import BanksSidebar from '../components/BanksSidebar';
+import Sidebar from '../components/Sidebar';
 
 // Define a type for tabs
 interface Tab {
@@ -19,7 +20,11 @@ interface Tab {
   accountName?: string;
 }
 
-export default function BanksTabsClient() {
+interface BanksTabsClientProps {
+  showMobileSidebar?: boolean;
+}
+
+export default function BanksTabsClient({ showMobileSidebar }: BanksTabsClientProps) {
   const [tabs, setTabs] = useState<Tab[]>([{ key: 'overview', label: 'Overview', type: 'overview' }]);
   const [activeTab, setActiveTab] = useState('overview');
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -28,6 +33,7 @@ export default function BanksTabsClient() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const fetchBanks = async () => {
@@ -48,6 +54,13 @@ export default function BanksTabsClient() {
       }
     };
     fetchBanks();
+  }, []);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   const handleCreateBank = async (bankName: string, tags: string[]) => {
@@ -132,36 +145,55 @@ export default function BanksTabsClient() {
 
   // Render tab bar and content
   return (
-    <div className="flex h-screen">
-      <BanksSidebar 
-        onSuperBankClick={() => {
-          const tabKey = 'super-bank';
-          if (tabs.some(tab => tab.key === tabKey)) {
+    <div className="flex flex-col md:flex-row h-screen w-full overflow-x-hidden">
+      {/* Mobile: show Sidebar with correct onSuperBankClick handler */}
+      {isMobile && showMobileSidebar ? (
+        <Sidebar
+          onSuperBankClick={() => {
+            const tabKey = 'super-bank';
+            if (tabs.some(tab => tab.key === tabKey)) {
+              setActiveTab(tabKey);
+              return;
+            }
+            setTabs([...tabs, { key: tabKey, label: 'Super Bank', type: 'super-bank' }]);
             setActiveTab(tabKey);
-            return;
-          }
-          setTabs([...tabs, { key: tabKey, label: 'Super Bank', type: 'super-bank' }]);
-          setActiveTab(tabKey);
-        }}
-        onBankClick={(bank) => {
-          const tabKey = `accounts-${bank.id}`;
-          if (tabs.some(tab => tab.key === tabKey)) {
-            setActiveTab(tabKey);
-            router.push(`${pathname}?bankId=${bank.id}`);
-            return;
-          }
-          setTabs([...tabs, { key: tabKey, label: bank.bankName, type: 'accounts', bankId: bank.id }]);
-          setActiveTab(tabKey);
-          router.push(`${pathname}?bankId=${bank.id}`);
-        }}
-        onAccountClick={handleAccountClick}
-      />
-      <div className="flex-1 flex flex-col">
-        <div className="flex items-center gap-2 mb-2 sm:mb-3">
+          }}
+          onBankClick={handleBankCardClick}
+          onAccountClick={handleAccountClick}
+        />
+      ) : (
+        <div className="hidden md:block min-w-[220px] max-w-xs">
+          <BanksSidebar 
+            onSuperBankClick={() => {
+              const tabKey = 'super-bank';
+              if (tabs.some(tab => tab.key === tabKey)) {
+                setActiveTab(tabKey);
+                return;
+              }
+              setTabs([...tabs, { key: tabKey, label: 'Super Bank', type: 'super-bank' }]);
+              setActiveTab(tabKey);
+            }}
+            onBankClick={(bank) => {
+              const tabKey = `accounts-${bank.id}`;
+              if (tabs.some(tab => tab.key === tabKey)) {
+                setActiveTab(tabKey);
+                router.push(`${pathname}?bankId=${bank.id}`);
+                return;
+              }
+              setTabs([...tabs, { key: tabKey, label: bank.bankName, type: 'accounts', bankId: bank.id }]);
+              setActiveTab(tabKey);
+              router.push(`${pathname}?bankId=${bank.id}`);
+            }}
+            onAccountClick={handleAccountClick}
+          />
+        </div>
+      )}
+      <div className="flex-1 flex flex-col w-full min-w-0">
+        <div className="flex items-center gap-2 mb-2 sm:mb-3 flex-wrap px-2 sm:px-5">
           {tabs.map(tab => (
             <button
               key={tab.key}
-              className={`px-5 py-2 rounded-t-lg text-sm font-semibold transition-colors border-b-2 flex items-center gap-2 ${
+              className={`px-3 sm:px-5 py-2 rounded-t-lg text-xs sm:text-sm font-semibold transition-colors border-b-2 flex items-center gap-2 ${
                 activeTab === tab.key
                   ? 'border-blue-600 text-blue-700 bg-white shadow-sm'
                   : 'border-transparent text-gray-500 bg-transparent hover:text-blue-600'
@@ -183,7 +215,7 @@ export default function BanksTabsClient() {
           ))}
           <button
             onClick={handleAddTab}
-            className="ml-2 px-3 py-2 rounded-t-lg bg-gradient-to-r from-blue-400 to-purple-400 text-white font-bold shadow-sm hover:scale-105 transition"
+            className="ml-2 px-2 sm:px-3 py-2 rounded-t-lg bg-gradient-to-r from-blue-400 to-purple-400 text-white font-bold shadow-sm hover:scale-105 transition text-xs sm:text-base"
             title="Add Tab"
           >
             +
@@ -191,19 +223,19 @@ export default function BanksTabsClient() {
         </div>
         <div>
           {activeTab === 'overview' && (
-            <div className="space-y-4 sm:space-y-6 px-5">
-              <div className="flex flex-row justify-between items-center gap-2 sm:gap-4 mb-2">
+            <div className="space-y-4 sm:space-y-6 px-2 sm:px-5">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4 mb-2">
                 <div className="flex items-center gap-2">
                   <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl sm:text-2xl shadow">
                     <RiBankLine />
                   </div>
-                  <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Banks</h1>
+                  <h1 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Banks</h1>
                 </div>
                 <button
                   onClick={() => setIsModalOpen(true)}
-                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 sm:px-5 py-2 rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold w-auto"
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-3 sm:px-5 py-2 rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold w-auto text-xs sm:text-base"
                 >
-                  <RiAddLine className="text-lg sm:text-xl" />
+                  <RiAddLine className="text-base sm:text-xl" />
                   <span className="block sm:hidden">Add</span>
                   <span className="hidden sm:block">Add Bank</span>
                 </button>
@@ -224,7 +256,36 @@ export default function BanksTabsClient() {
                 onClose={() => setIsModalOpen(false)}
                 onCreate={handleCreateBank}
               />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
+              <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
+                {/* Super Bank Card - mobile only */}
+                <div
+                  key="super-bank"
+                  onClick={() => {
+                    const tabKey = 'super-bank';
+                    if (tabs.some(tab => tab.key === tabKey)) {
+                      setActiveTab(tabKey);
+                      return;
+                    }
+                    setTabs([...tabs, { key: tabKey, label: 'Super Bank', type: 'super-bank' }]);
+                    setActiveTab(tabKey);
+                  }}
+                  className="block md:hidden cursor-pointer relative bg-white/70 backdrop-blur-lg p-3 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
+                >
+                  <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-3xl sm:text-5xl pointer-events-none select-none rotate-12">
+                    <RiBankLine />
+                  </div>
+                  <h3 className="text-sm sm:text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-base sm:text-xl shadow">
+                      <RiBankLine />
+                    </span>
+                    Super Bank
+                  </h3>
+                  <div className="mt-2 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2">
+                    <span className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium">
+                      <RiPriceTag3Line className="text-blue-400" /> All Transactions
+                    </span>
+                  </div>
+                </div>
                 {isFetching ? (
                   <div className="col-span-full text-center py-8 sm:py-12 text-gray-500">
                     Loading banks...
@@ -238,18 +299,18 @@ export default function BanksTabsClient() {
                     <div
                       key={bank.id}
                       onClick={() => handleBankCardClick(bank)}
-                      className="cursor-pointer relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
+                      className="cursor-pointer relative bg-white/70 backdrop-blur-lg p-3 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
                     >
-                      <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-4xl sm:text-5xl pointer-events-none select-none rotate-12">
+                      <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-3xl sm:text-5xl pointer-events-none select-none rotate-12">
                         <RiBankLine />
                       </div>
-                      <h3 className="text-base sm:text-lg font-semibold text-gray-800 flex items-center gap-2">
-                        <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-lg sm:text-xl shadow">
+                      <h3 className="text-sm sm:text-lg font-semibold text-gray-800 flex items-center gap-2">
+                        <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-base sm:text-xl shadow">
                           <RiBankLine />
                         </span>
                         {bank.bankName}
                       </h3>
-                      <div className="mt-3 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2">
+                      <div className="mt-2 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2">
                         {bank.tags.map((tag) => (
                           <span
                             key={tag}

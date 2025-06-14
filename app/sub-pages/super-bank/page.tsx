@@ -63,6 +63,8 @@ export default function SuperBankPage() {
   const [pendingTag, setPendingTag] = useState<{ tagName: string; rowIdx: number; selectionText: string } | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
+  const [isMobile, setIsMobile] = useState(false);
+
   // Fetch all transactions
   useEffect(() => {
     setLoading(true);
@@ -635,6 +637,13 @@ export default function SuperBankPage() {
     return typeof value === 'string' || typeof value === 'number' ? value : undefined;
   }
 
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
     <div className="min-h-screen py-4 sm:py-6 px-2 sm:px-4">
       <div className="max-w-full sm:max-w-[75%] mx-auto">
@@ -814,7 +823,7 @@ export default function SuperBankPage() {
           )}
           <TransactionTable
             rows={filteredRows}
-            headers={superHeader}
+            headers={isMobile ? superHeader.filter(h => ['amount', 'balance', 'date', 'bank name'].includes(h.toLowerCase())) : superHeader}
             selectedRows={new Set(filteredRows.map((_, idx) => selectedRows.has(idx) ? idx : -1).filter(i => i !== -1))}
             selectAll={selectAll}
             onRowSelect={handleRowSelect}
