@@ -8,6 +8,7 @@ interface TransactionFilterBarProps {
   onDateRangeChange: (range: { from: string; to: string }) => void;
   onDownload: () => void;
   downloadDisabled?: boolean;
+  children?: React.ReactNode;
 }
 
 const TransactionFilterBar: React.FC<TransactionFilterBarProps> = ({
@@ -17,6 +18,7 @@ const TransactionFilterBar: React.FC<TransactionFilterBarProps> = ({
   onDateRangeChange,
   onDownload,
   downloadDisabled,
+  children,
 }) => (
   <div className="w-full max-w-5xl mx-auto bg-white rounded-lg shadow-sm p-3 flex flex-col gap-3 mb-4">
     <div className="flex flex-col md:flex-row gap-2">
@@ -60,6 +62,7 @@ const TransactionFilterBar: React.FC<TransactionFilterBarProps> = ({
         </span>
       </button>
     </div>
+    {children && <div className="mt-2">{children}</div>}
   </div>
 );
 

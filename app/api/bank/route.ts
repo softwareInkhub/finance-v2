@@ -54,4 +54,43 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const { id, bankName } = await request.json();
+    if (!id || !bankName) {
+      return NextResponse.json(
+        { error: 'Bank id and new bankName are required' },
+        { status: 400 }
+      );
+    }
+    // Fetch the existing bank
+    const scanCmd = new ScanCommand({
+      TableName: TABLES.BANKS,
+      FilterExpression: '#id = :id',
+      ExpressionAttributeNames: { '#id': 'id' },
+      ExpressionAttributeValues: { ':id': id },
+    });
+    const result = await docClient.send(scanCmd);
+    const bank = result.Items && result.Items[0];
+    if (!bank) {
+      return NextResponse.json({ error: 'Bank not found' }, { status: 404 });
+    }
+    // Update the bank name
+    bank.bankName = bankName;
+    await docClient.send(
+      new PutCommand({
+        TableName: TABLES.BANKS,
+        Item: bank,
+      })
+    );
+    return NextResponse.json({ success: true, bank });
+  } catch (error) {
+    console.error('Error updating bank name:', error);
+    return NextResponse.json(
+      { error: 'Failed to update bank name' },
+      { status: 500 }
+    );
+  }
 } 

@@ -5,9 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import StatementsPage from '../sub-pages/statements/page';
 import React from 'react';
 
-export default function BanksPage() {
+function BanksPageInner() {
   const searchParams = useSearchParams();
-  const showMobileSidebar = searchParams.get('showSidebar') === '1';
   const bankId = searchParams.get('bankId');
   const accountId = searchParams.get('accountId');
   const [isMobile, setIsMobile] = React.useState(false);
@@ -23,9 +22,13 @@ export default function BanksPage() {
     return <StatementsPage />;
   }
 
+  return <BanksTabsClient />;
+}
+
+export default function BanksPage() {
   return (
     <Suspense fallback={<div>Loading...</div>}>
-      <BanksTabsClient showMobileSidebar={showMobileSidebar} />
+      <BanksPageInner />
     </Suspense>
   );
 } 

@@ -1,16 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Sidebar from './Sidebar';
+import { useRouter } from 'next/navigation';
 import { 
   RiMenuLine, 
   RiNotification3Line, 
   RiUserLine
 } from 'react-icons/ri';
-import { useRouter } from 'next/navigation';
 
 export default function Navbar() {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const router = useRouter();
   const [isMobile, setIsMobile] = useState(false);
@@ -21,10 +19,6 @@ export default function Navbar() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-
-  const handleSidebarItemClick = () => {
-    setIsMobileMenuOpen(false);
-  };
 
   const handleLogout = () => {
     localStorage.removeItem('isLoggedIn');
@@ -39,7 +33,6 @@ export default function Navbar() {
           <>
             <button
               className="mr-2 p-2 md:hidden"
-              onClick={() => setIsMobileMenuOpen(true)}
               aria-label="Open sidebar"
             >
               <RiMenuLine size={28} />

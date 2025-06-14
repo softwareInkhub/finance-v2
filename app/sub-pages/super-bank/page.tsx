@@ -65,6 +65,15 @@ export default function SuperBankPage() {
 
   const [isMobile, setIsMobile] = useState(false);
 
+  // Add state for sort order
+  const [dateSortOrder, setDateSortOrder] = useState<'latest' | 'oldest'>('latest');
+
+  // Find the date column name
+  const dateCol = superHeader.find((h) => h.toLowerCase().includes("date"));
+
+  // Add state for search field
+  const [searchField, setSearchField] = useState<string>('');
+
   // Fetch all transactions
   useEffect(() => {
     setLoading(true);
@@ -345,18 +354,30 @@ export default function SuperBankPage() {
   // Then apply search and date filters to tagFilteredRows
   const filteredRows = tagFilteredRows.filter((row) => {
     // Search
-    const searchMatch =
-      !search || Object.values(row).some((val) => {
+    let searchMatch = true;
+    if (search) {
+      if (searchField && row[searchField] !== undefined) {
+        const val = row[searchField];
         if (typeof val === 'string' || typeof val === 'number') {
-          return String(val).toLowerCase().includes(search.toLowerCase());
+          searchMatch = String(val).toLowerCase().includes(search.toLowerCase());
         } else if (Array.isArray(val)) {
-          return val.map(v => typeof v === 'object' && v !== null && 'name' in v ? (v as Tag).name : String(v)).join(', ').toLowerCase().includes(search.toLowerCase());
+          searchMatch = val.map(v => typeof v === 'object' && v !== null && 'name' in v ? (v as Tag).name : String(v)).join(', ').toLowerCase().includes(search.toLowerCase());
+        } else {
+          searchMatch = false;
         }
-        return false;
-      });
+      } else {
+        searchMatch = Object.values(row).some((val) => {
+          if (typeof val === 'string' || typeof val === 'number') {
+            return String(val).toLowerCase().includes(search.toLowerCase());
+          } else if (Array.isArray(val)) {
+            return val.map(v => typeof v === 'object' && v !== null && 'name' in v ? (v as Tag).name : String(v)).join(', ').toLowerCase().includes(search.toLowerCase());
+          }
+          return false;
+        });
+      }
+    }
     // Date range (try to find a date column)
     let dateMatch = true;
-    const dateCol = superHeader.find((h) => h.toLowerCase().includes("date"));
     if (dateCol && (dateRange.from || dateRange.to)) {
       const rowDate = row[dateCol];
       if (typeof rowDate === 'string') {
@@ -372,6 +393,25 @@ export default function SuperBankPage() {
     }
     return searchMatch && dateMatch;
   });
+
+  // Sort filteredRows by date if dateCol exists
+  const sortedRows = [...filteredRows];
+  if (dateCol) {
+    sortedRows.sort((a, b) => {
+      const parseDate = (d: any) => {
+        if (typeof d !== 'string') return 0;
+        // Support dd/mm/yyyy and yyyy-mm-dd
+        if (/\d{2}\/\d{2}\/\d{4}/.test(d)) {
+          const [dd, mm, yyyy] = d.split("/");
+          return new Date(`${yyyy}-${mm}-${dd}`).getTime();
+        }
+        return new Date(d).getTime();
+      };
+      const aDate = parseDate(a[dateCol]);
+      const bDate = parseDate(b[dateCol]);
+      return dateSortOrder === 'latest' ? bDate - aDate : aDate - bDate;
+    });
+  }
 
   // Handle row selection
   const handleRowSelect = (idx: number) => {
@@ -669,6 +709,16 @@ export default function SuperBankPage() {
             <h2 className="font-bold text-blue-700 mb-2 text-sm sm:text-base">Super Bank Header</h2>
             <div className="mb-2 text-xs sm:text-sm text-gray-700">
               <span className="font-semibold">Current Header:</span>
+              <button
+                className="ml-2 px-2 py-1 bg-blue-500 text-white rounded text-xs font-semibold hover:bg-blue-600"
+                onClick={() => {
+                  setHeaderEditing(true);
+                  setHeaderInputs(superHeader);
+                }}
+                style={{ display: headerEditing ? 'none' : 'inline-block' }}
+              >
+                Edit
+              </button>
               <div className="flex flex-wrap gap-1 sm:gap-2 mt-1">
                 {superHeader.length > 0 ? (
                   superHeader.map((col, idx) => (
@@ -769,7 +819,22 @@ export default function SuperBankPage() {
           onDateRangeChange={setDateRange}
           onDownload={handleDownload}
           downloadDisabled={selectedRows.size === 0}
-        />
+        >
+          <div className="flex items-center gap-2 mt-2">
+            <label htmlFor="searchField" className="text-xs font-medium text-gray-700">Search in:</label>
+            <select
+              id="searchField"
+              value={searchField}
+              onChange={e => setSearchField(e.target.value)}
+              className="border rounded px-2 py-1 text-xs"
+            >
+              <option value="">All Fields</option>
+              {superHeader.map((header, idx) => (
+                <option key={idx} value={header}>{header}</option>
+              ))}
+            </select>
+          </div>
+        </TransactionFilterBar>
         {/* Tag filter pills section below controls */}
         <TagFilterPills
           allTags={sortedTags}
@@ -793,6 +858,26 @@ export default function SuperBankPage() {
             tagSuccess={tagSuccess}
           />
         )}
+        {/* Add sort UI above the table */}
+        <div className="flex items-center gap-2 mb-2">
+          {dateCol && (
+            <>
+              <span className="font-medium text-sm">Sort by Date:</span>
+              <button
+                className={`px-2 py-1 rounded border text-xs font-semibold ${dateSortOrder === 'latest' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+                onClick={() => setDateSortOrder('latest')}
+              >
+                Latest
+              </button>
+              <button
+                className={`px-2 py-1 rounded border text-xs font-semibold ${dateSortOrder === 'oldest' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+                onClick={() => setDateSortOrder('oldest')}
+              >
+                Oldest
+              </button>
+            </>
+          )}
+        </div>
         {/* Table and selection logic */}
         <div ref={tableRef} className="overflow-x-auto relative">
           {/* Floating create tag button */}
@@ -822,7 +907,7 @@ export default function SuperBankPage() {
             </div>
           )}
           <TransactionTable
-            rows={filteredRows}
+            rows={sortedRows}
             headers={isMobile ? superHeader.filter(h => ['amount', 'balance', 'date', 'bank name'].includes(h.toLowerCase())) : superHeader}
             selectedRows={new Set(filteredRows.map((_, idx) => selectedRows.has(idx) ? idx : -1).filter(i => i !== -1))}
             selectAll={selectAll}

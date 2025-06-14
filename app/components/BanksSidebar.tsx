@@ -6,6 +6,7 @@ import { RiBankLine, RiAccountPinCircleLine, RiArrowDownSLine, RiArrowRightSLine
 interface Bank {
   id: string;
   bankName: string;
+  tags: string[];
 }
 
 interface Account {

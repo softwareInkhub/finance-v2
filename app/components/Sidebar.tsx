@@ -14,15 +14,15 @@ import {
   RiArrowRightSLine
 } from 'react-icons/ri';
 import BanksSidebar from './BanksSidebar';
+import type { Bank } from '../types/aws';
 
 interface SidebarProps {
   onItemClick?: () => void;
   onSuperBankClick?: () => void;
-  onBankClick?: (bank: any) => void;
-  onAccountClick?: (account: any, bankId: string) => void;
+  onBankClick?: (bank: Bank) => void;
 }
 
-export default function Sidebar({ onItemClick, onSuperBankClick, onBankClick, onAccountClick }: SidebarProps) {
+export default function Sidebar({ onItemClick, onSuperBankClick, onBankClick }: SidebarProps) {
   console.log('Sidebar: onSuperBankClick prop is', onSuperBankClick);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);

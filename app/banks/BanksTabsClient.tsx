@@ -4,7 +4,7 @@ import AccountsClient from '../sub-pages/accounts/AccountsClient';
 import StatementsPage from '../sub-pages/statements/page';
 import SuperBankPage from '../sub-pages/super-bank/page';
 import CreateBankModal from '../components/Modals/CreateBankModal';
-import { RiBankLine, RiAddLine, RiPriceTag3Line, RiCloseLine } from 'react-icons/ri';
+import { RiBankLine, RiAddLine, RiPriceTag3Line, RiCloseLine, RiEdit2Line, RiCheckLine, RiCloseCircleLine } from 'react-icons/ri';
 import { Bank } from '../types/aws';
 import { useRouter, usePathname } from 'next/navigation';
 import BanksSidebar from '../components/BanksSidebar';
@@ -20,11 +20,7 @@ interface Tab {
   accountName?: string;
 }
 
-interface BanksTabsClientProps {
-  showMobileSidebar?: boolean;
-}
-
-export default function BanksTabsClient({ showMobileSidebar }: BanksTabsClientProps) {
+export default function BanksTabsClient() {
   const [tabs, setTabs] = useState<Tab[]>([{ key: 'overview', label: 'Overview', type: 'overview' }]);
   const [activeTab, setActiveTab] = useState('overview');
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -34,6 +30,8 @@ export default function BanksTabsClient({ showMobileSidebar }: BanksTabsClientPr
   const router = useRouter();
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
+  const [editingBankId, setEditingBankId] = useState<string | null>(null);
+  const [editingBankName, setEditingBankName] = useState<string>("");
 
   useEffect(() => {
     const fetchBanks = async () => {
@@ -143,6 +141,37 @@ export default function BanksTabsClient({ showMobileSidebar }: BanksTabsClientPr
     if (activeTab === tabKey) setActiveTab('overview');
   };
 
+  const handleEditBank = (bank: Bank) => {
+    setEditingBankId(bank.id);
+    setEditingBankName(bank.bankName);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingBankId(null);
+    setEditingBankName("");
+  };
+
+  const handleSaveBankName = async (bank: Bank) => {
+    if (!editingBankName.trim() || editingBankName === bank.bankName) {
+      setEditingBankId(null);
+      setEditingBankName("");
+      return;
+    }
+    try {
+      const response = await fetch('/api/bank', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bank.id, bankName: editingBankName.trim() }),
+      });
+      if (!response.ok) throw new Error('Failed to update bank name');
+      setBanks(prev => prev.map(b => b.id === bank.id ? { ...b, bankName: editingBankName.trim() } : b));
+      setEditingBankId(null);
+      setEditingBankName("");
+    } catch (err) {
+      alert('Failed to update bank name');
+    }
+  };
+
   // Render tab bar and content
   return (
     <div className="flex flex-col md:flex-row h-screen w-full overflow-x-hidden">
@@ -160,7 +189,6 @@ export default function BanksTabsClient({ showMobileSidebar }: BanksTabsClientPr
             setActiveTab(tabKey);
           }}
           onBankClick={handleBankCardClick}
-          onAccountClick={handleAccountClick}
         />
       ) : (
         <div className="hidden md:block min-w-[220px] max-w-xs">
@@ -309,7 +337,42 @@ export default function BanksTabsClient({ showMobileSidebar }: BanksTabsClientPr
                         <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-base sm:text-xl shadow">
                           <RiBankLine />
                         </span>
-                        {bank.bankName}
+                        {editingBankId === bank.id ? (
+                          <>
+                            <input
+                              className="border border-blue-300 rounded px-2 py-1 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-400"
+                              value={editingBankName}
+                              onChange={e => setEditingBankName(e.target.value)}
+                              onClick={e => e.stopPropagation()}
+                              autoFocus
+                            />
+                            <button
+                              className="ml-1 text-green-600 hover:text-green-800"
+                              onClick={e => { e.stopPropagation(); handleSaveBankName(bank); }}
+                              title="Save"
+                            >
+                              <RiCheckLine />
+                            </button>
+                            <button
+                              className="ml-1 text-red-500 hover:text-red-700"
+                              onClick={e => { e.stopPropagation(); handleCancelEdit(); }}
+                              title="Cancel"
+                            >
+                              <RiCloseCircleLine />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {bank.bankName}
+                            <button
+                              className="ml-2 text-blue-400 hover:text-blue-700"
+                              onClick={e => { e.stopPropagation(); handleEditBank(bank); }}
+                              title="Edit Bank Name"
+                            >
+                              <RiEdit2Line />
+                            </button>
+                          </>
+                        )}
                       </h3>
                       <div className="mt-2 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2">
                         {bank.tags.map((tag) => (
