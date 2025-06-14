@@ -23,6 +23,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onItemClick, onSuperBankClick, onBankClick, onAccountClick }: SidebarProps) {
+  console.log('Sidebar: onSuperBankClick prop is', onSuperBankClick);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
@@ -80,12 +81,6 @@ export default function Sidebar({ onItemClick, onSuperBankClick, onBankClick, on
 
   // Sidebar overlay for mobile
   if (isMobile && showMobileSidebar) {
-    // Custom handler for Super Bank click in mobile
-    const handleSuperBankClickMobile = () => {
-      // Redirect to the API URL and close sidebar
-      router.push('/banks/super-bank?type=super-bank');
-      setShowMobileSidebar(false);
-    };
     return (
       <div className="fixed inset-0 z-50 flex">
         <div className="absolute inset-0 bg-black/30" onClick={() => setShowMobileSidebar(false)} />
@@ -134,7 +129,11 @@ export default function Sidebar({ onItemClick, onSuperBankClick, onBankClick, on
                       {showBanksSubmenu && isMobile && (
                         <div className="overflow-y-auto">
                           <BanksSidebar 
-                            onSuperBankClick={handleSuperBankClickMobile} 
+                            onSuperBankClick={() => {
+                              console.log('Sidebar: onSuperBankClick called');
+                              if (onSuperBankClick) onSuperBankClick();
+                              setShowMobileSidebar(false);
+                            }}
                             onBankClick={onBankClick}
                             onAccountClick={handleAccountClickMobile}
                             hideSearch 
@@ -225,7 +224,11 @@ export default function Sidebar({ onItemClick, onSuperBankClick, onBankClick, on
                 {showBanksSubmenu && isMobile && (
                   <div className="w-full max-h-[60vh] overflow-y-auto">
                     <BanksSidebar 
-                      onSuperBankClick={onSuperBankClick} 
+                      onSuperBankClick={() => {
+                        console.log('Sidebar: onSuperBankClick called');
+                        if (onSuperBankClick) onSuperBankClick();
+                        setShowMobileSidebar(false);
+                      }}
                       onBankClick={onBankClick}
                       onAccountClick={handleAccountClickMobile}
                       hideSearch 

@@ -147,9 +147,10 @@ export default function BanksTabsClient({ showMobileSidebar }: BanksTabsClientPr
   return (
     <div className="flex flex-col md:flex-row h-screen w-full overflow-x-hidden">
       {/* Mobile: show Sidebar with correct onSuperBankClick handler */}
-      {isMobile && showMobileSidebar ? (
+      {isMobile ? (
         <Sidebar
           onSuperBankClick={() => {
+            console.log('BanksTabsClient: onSuperBankClick called');
             const tabKey = 'super-bank';
             if (tabs.some(tab => tab.key === tabKey)) {
               setActiveTab(tabKey);
