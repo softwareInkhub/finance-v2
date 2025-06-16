@@ -65,6 +65,7 @@ export default function SuperBankPage() {
 
   // Add state
   const [searchField, setSearchField] = useState('all');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Fetch all transactions
   useEffect(() => {
@@ -351,9 +352,9 @@ export default function SuperBankPage() {
       !search ||
       (searchField === 'all'
         ? Object.values(row).some((val) => {
-            if (typeof val === 'string' || typeof val === 'number') {
-              return String(val).toLowerCase().includes(search.toLowerCase());
-            } else if (Array.isArray(val)) {
+        if (typeof val === 'string' || typeof val === 'number') {
+          return String(val).toLowerCase().includes(search.toLowerCase());
+        } else if (Array.isArray(val)) {
               return val
                 .map((v) =>
                   typeof v === 'object' && v !== null && 'name' in v
@@ -363,8 +364,8 @@ export default function SuperBankPage() {
                 .join(', ')
                 .toLowerCase()
                 .includes(search.toLowerCase());
-            }
-            return false;
+        }
+        return false;
           })
         : String(row[searchField] || '')
             .toLowerCase()
@@ -378,14 +379,40 @@ export default function SuperBankPage() {
         // Try to parse as yyyy-mm-dd or dd/mm/yyyy
         let d = rowDate;
         if (/\d{2}\/\d{2}\/\d{4}/.test(d)) {
-          const [dd, mm, yyyy] = d.split("/");
-          d = `${yyyy}-${mm}-${dd}`;
+          const [dd, mm, origYyyy] = d.split("/");
+          d = `${origYyyy}-${mm}-${dd}`;
         }
         if (dateRange.from && d < dateRange.from) dateMatch = false;
         if (dateRange.to && d > dateRange.to) dateMatch = false;
       }
     }
     return searchMatch && dateMatch;
+  });
+
+  // Helper to parse both dd/mm/yyyy and dd/mm/yy
+  function parseDate(dateStr: string): Date {
+    if (!dateStr) return new Date('1970-01-01');
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      const [dd, mm, origYyyy] = parts;
+      let yyyy = origYyyy;
+      if (yyyy.length === 2) {
+        yyyy = '20' + yyyy;
+      }
+      return new Date(`${yyyy}-${mm}-${dd}`);
+    }
+    return new Date(dateStr);
+  }
+
+  // Filtered and searched rows (already present as filteredRows)
+  const sortedAndFilteredRows = [...filteredRows].sort((a, b) => {
+    const dateA = parseDate(a['Date'] as string);
+    const dateB = parseDate(b['Date'] as string);
+    if (sortOrder === 'desc') {
+      return dateB.getTime() - dateA.getTime();
+    } else {
+      return dateA.getTime() - dateB.getTime();
+    }
   });
 
   // Handle row selection
@@ -780,6 +807,8 @@ export default function SuperBankPage() {
           searchField={searchField}
           onSearchFieldChange={setSearchField}
           searchFieldOptions={['all', ...superHeader]}
+          sortOrder={sortOrder}
+          onSortOrderChange={setSortOrder}
         />
         {/* Tag filter pills section below controls */}
         <TagFilterPills
@@ -833,7 +862,7 @@ export default function SuperBankPage() {
             </div>
           )}
           <TransactionTable
-            rows={filteredRows}
+            rows={sortedAndFilteredRows}
             headers={superHeader}
             selectedRows={new Set(filteredRows.map((_, idx) => selectedRows.has(idx) ? idx : -1).filter(i => i !== -1))}
             selectAll={selectAll}

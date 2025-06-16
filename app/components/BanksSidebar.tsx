@@ -90,12 +90,12 @@ export default function BanksSidebar({ onSuperBankClick, onBankClick, onAccountC
                       )}
                       {accounts[bank.id].map(account => (
                         <li key={account.id}>
-                          <button
-                            className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 text-xs w-full text-left ${pathname.includes(`/accounts/${account.id}`) ? 'text-blue-700 font-semibold' : ''}`}
+                            <button
+                              className={`flex items-center gap-2 px-2 py-1 rounded hover:bg-blue-100 text-xs w-full text-left ${pathname.includes(`/accounts/${account.id}`) ? 'text-blue-700 font-semibold' : ''}`}
                             onClick={() => onAccountClick && onAccountClick(account, bank.id)}
-                          >
-                            <RiAccountPinCircleLine /> {account.accountHolderName}
-                          </button>
+                            >
+                              <RiAccountPinCircleLine /> {account.accountHolderName}
+                            </button>
                         </li>
                       ))}
                     </ul>

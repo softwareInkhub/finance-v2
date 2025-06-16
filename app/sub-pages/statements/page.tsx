@@ -74,6 +74,7 @@ function StatementsContent() {
   const [transactionHeaders, setTransactionHeaders] = useState<string[]>([]);
   const [uploadTags, setUploadTags] = useState('');
   const [searchField, setSearchField] = useState('all');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     const fetchStatements = async () => {
@@ -266,6 +267,32 @@ function StatementsContent() {
     return true;
   });
 
+  // Helper to parse both dd/mm/yyyy and dd/mm/yy
+  function parseDate(dateStr: string): Date {
+    if (!dateStr) return new Date('1970-01-01');
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      const [dd, mm, origYyyy] = parts;
+      let yyyy = origYyyy;
+      if (yyyy.length === 2) {
+        yyyy = '20' + yyyy;
+      }
+      return new Date(`${yyyy}-${mm}-${dd}`);
+    }
+    return new Date(dateStr);
+  }
+
+  // Sort filtered transactions
+  const sortedAndFilteredTransactions = [...filteredTransactions].sort((a, b) => {
+    const dateA = parseDate(a['Date'] as string);
+    const dateB = parseDate(b['Date'] as string);
+    if (sortOrder === 'desc') {
+      return dateB.getTime() - dateA.getTime();
+    } else {
+      return dateA.getTime() - dateB.getTime();
+    }
+  });
+
   useEffect(() => {
     if (tab === 'transactions' && filteredTransactions.length > 0) {
       const headers = Array.from(new Set(filteredTransactions.flatMap(tx => Object.keys(tx)))).filter(key => key !== 'id' && key !== 'transactionData');
@@ -447,6 +474,8 @@ function StatementsContent() {
               searchField={searchField}
               onSearchFieldChange={setSearchField}
               searchFieldOptions={['all', ...transactionHeaders]}
+              sortOrder={sortOrder}
+              onSortOrderChange={setSortOrder}
             />
             
             {/* Tag Filters */}
@@ -481,25 +510,25 @@ function StatementsContent() {
             {tab === 'transactions' && (
               (() => {
                 // Compute summary stats for AnalyticsSummary
-                const amountKey = filteredTransactions.length > 0 ? Object.keys(filteredTransactions[0]).find(k => k.toLowerCase().includes('amount')) : undefined;
-                const totalAmount = amountKey ? filteredTransactions.reduce((sum, tx) => {
+                const amountKey = sortedAndFilteredTransactions.length > 0 ? Object.keys(sortedAndFilteredTransactions[0]).find(k => k.toLowerCase().includes('amount')) : undefined;
+                const totalAmount = amountKey ? sortedAndFilteredTransactions.reduce((sum, tx) => {
                   const val = tx[amountKey];
                   let num = 0;
                   if (typeof val === 'string') num = parseFloat(val.replace(/,/g, '')) || 0;
                   else if (typeof val === 'number') num = val;
                   return sum + num;
                 }, 0).toLocaleString() : undefined;
-                const allBankIds = new Set(filteredTransactions.map(tx => tx.bankId));
-                const allAccountIds = new Set(filteredTransactions.map(tx => tx.accountId));
+                const allBankIds = new Set(sortedAndFilteredTransactions.map(tx => tx.bankId));
+                const allAccountIds = new Set(sortedAndFilteredTransactions.map(tx => tx.accountId));
                 let tagged = 0, untagged = 0;
-                filteredTransactions.forEach(tx => {
+                sortedAndFilteredTransactions.forEach(tx => {
                   const tags = (tx.tags || []) as Tag[];
                   if (Array.isArray(tags) && tags.length > 0) tagged++; else untagged++;
                 });
-                const totalTags = new Set(filteredTransactions.flatMap(tx => (Array.isArray(tx.tags) ? tx.tags.map(t => t.name) : []))).size;
+                const totalTags = new Set(sortedAndFilteredTransactions.flatMap(tx => (Array.isArray(tx.tags) ? tx.tags.map(t => t.name) : []))).size;
                 return (
                   <AnalyticsSummary
-                    totalTransactions={filteredTransactions.length}
+                    totalTransactions={sortedAndFilteredTransactions.length}
                     totalAmount={totalAmount}
                     totalBanks={allBankIds.size}
                     totalAccounts={allAccountIds.size}
@@ -516,7 +545,7 @@ function StatementsContent() {
             {/* Transaction Table */}
             {tab === 'transactions' && (
               <TransactionTable
-                rows={filteredTransactions.map(tx => {
+                rows={sortedAndFilteredTransactions.map(tx => {
                   // Remove transactionData property without referencing it directly
                   const filtered = Object.fromEntries(Object.entries(tx).filter(([key]) => key !== 'transactionData'));
                   return {
@@ -525,9 +554,9 @@ function StatementsContent() {
                   };
                 })}
                 headers={transactionHeaders}
-                selectedRows={new Set(filteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
+                selectedRows={new Set(sortedAndFilteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
                 onRowSelect={idx => {
-                  const tx = filteredTransactions[idx];
+                  const tx = sortedAndFilteredTransactions[idx];
                   if (tx) handleRowSelect(tx.id);
                 }}
                 onSelectAll={handleSelectAll}
