@@ -65,6 +65,13 @@ export default function BanksTabsClient() {
   }, []);
 
   const handleCreateBank = async (bankName: string, tags: string[]) => {
+    const exists = banks.some(
+      b => b.bankName.trim().toLowerCase() === bankName.trim().toLowerCase()
+    );
+    if (exists) {
+      alert("A bank with this name already exists.");
+      return;
+    }
     setError(null);
     try {
       const response = await fetch('/api/bank', {
@@ -246,14 +253,16 @@ export default function BanksTabsClient() {
                   </div>
                   <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Banks</h1>
                 </div>
-                <button
-                  onClick={() => setIsModalOpen(true)}
-                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 sm:px-5 py-2 rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold w-auto"
-                >
-                  <RiAddLine className="text-lg sm:text-xl" />
-                  <span className="block sm:hidden">Add</span>
-                  <span className="hidden sm:block">Add Bank</span>
-                </button>
+                {userEmail === "nitesh.inkhub@gmail.com" && (
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 sm:px-5 py-2 rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold w-auto"
+                  >
+                    <RiAddLine className="text-lg sm:text-xl" />
+                    <span className="block sm:hidden">Add</span>
+                    <span className="hidden sm:block">Add Bank</span>
+                  </button>
+                )}
               </div>
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-3 sm:px-4 py-3 rounded-lg">

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
+import { RiEdit2Line } from 'react-icons/ri';
 
 import AnalyticsSummary from '../../components/AnalyticsSummary';
 import TransactionFilterBar from '../../components/TransactionFilterBar';
@@ -66,6 +67,8 @@ export default function SuperBankPage() {
   // Add state
   const [searchField, setSearchField] = useState('all');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // Fetch all transactions
   useEffect(() => {
@@ -679,6 +682,18 @@ export default function SuperBankPage() {
     return typeof value === 'string' || typeof value === 'number' ? value : undefined;
   }
 
+  useEffect(() => {
+    const userId = localStorage.getItem('userId');
+    if (userId) {
+      fetch(`/api/users?id=${userId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.email) setUserEmail(data.email);
+        })
+        .catch(() => setUserEmail(null));
+    }
+  }, []);
+
   return (
     <div className="min-h-screen py-4 sm:py-6 px-2 sm:px-4">
       <div className="max-w-full sm:max-w-[75%] mx-auto">
@@ -694,13 +709,24 @@ export default function SuperBankPage() {
         {/* Super Bank Header Display and Edit - toggled by button */}
         {showHeaderSection && (
           <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-blue-50 rounded-lg shadow relative">
-            <button
-              className="absolute top-2 right-2 text-blue-700 hover:text-blue-900 text-xl font-bold"
-              onClick={() => setShowHeaderSection(false)}
-              title="Close"
-            >
-              ×
-            </button>
+            <div className="absolute top-2 right-2 flex items-center gap-2">
+              <button
+                className="text-blue-700 hover:text-blue-900 text-xl font-bold"
+                onClick={() => setShowHeaderSection(false)}
+                title="Close"
+              >
+                ×
+              </button>
+              {userEmail === "nitesh.inkhub@gmail.com" && !headerEditing && (
+                <button
+                  className="px-2 py-1 bg-blue-500 text-white rounded text-xs flex items-center"
+                  onClick={() => setHeaderEditing(true)}
+                  title="Edit Header"
+                >
+                  <RiEdit2Line size={16} />
+                </button>
+              )}
+            </div>
             <h2 className="font-bold text-blue-700 mb-2 text-sm sm:text-base">Super Bank Header</h2>
             <div className="mb-2 text-xs sm:text-sm text-gray-700">
               <span className="font-semibold">Current Header:</span>
