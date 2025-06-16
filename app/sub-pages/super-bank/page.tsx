@@ -63,6 +63,9 @@ export default function SuperBankPage() {
   const [pendingTag, setPendingTag] = useState<{ tagName: string; rowIdx: number; selectionText: string } | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
+  // Add state
+  const [searchField, setSearchField] = useState('all');
+
   // Fetch all transactions
   useEffect(() => {
     setLoading(true);
@@ -178,17 +181,18 @@ export default function SuperBankPage() {
     if (!selection?.text) return;
     setTagCreateMsg(null);
     try {
+      const userId = localStorage.getItem('userId');
       const res = await fetch("/api/tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: selection.text }),
+        body: JSON.stringify({ name: selection.text, userId }),
       });
       if (!res.ok) throw new Error("Failed to create tag");
       setTagCreateMsg("Tag created!");
       setPendingTag(selection.rowIdx !== undefined ? { tagName: selection.text, rowIdx: selection.rowIdx, selectionText: selection.text } : null);
       setSelection(null);
       // Refresh tags
-      const tagsRes = await fetch('/api/tags');
+      const tagsRes = await fetch('/api/tags?userId=' + userId);
       const tags = await tagsRes.json();
       setAllTags(Array.isArray(tags) ? tags : []);
     } catch {
@@ -344,17 +348,30 @@ export default function SuperBankPage() {
   const filteredRows = tagFilteredRows.filter((row) => {
     // Search
     const searchMatch =
-      !search || Object.values(row).some((val) => {
-        if (typeof val === 'string' || typeof val === 'number') {
-          return String(val).toLowerCase().includes(search.toLowerCase());
-        } else if (Array.isArray(val)) {
-          return val.map(v => typeof v === 'object' && v !== null && 'name' in v ? (v as Tag).name : String(v)).join(', ').toLowerCase().includes(search.toLowerCase());
-        }
-        return false;
-      });
+      !search ||
+      (searchField === 'all'
+        ? Object.values(row).some((val) => {
+            if (typeof val === 'string' || typeof val === 'number') {
+              return String(val).toLowerCase().includes(search.toLowerCase());
+            } else if (Array.isArray(val)) {
+              return val
+                .map((v) =>
+                  typeof v === 'object' && v !== null && 'name' in v
+                    ? (v as Tag).name
+                    : String(v)
+                )
+                .join(', ')
+                .toLowerCase()
+                .includes(search.toLowerCase());
+            }
+            return false;
+          })
+        : String(row[searchField] || '')
+            .toLowerCase()
+            .includes(search.toLowerCase()));
     // Date range (try to find a date column)
     let dateMatch = true;
-    const dateCol = superHeader.find((h) => h.toLowerCase().includes("date"));
+    const dateCol = superHeader.find((h) => h.toLowerCase().includes('date'));
     if (dateCol && (dateRange.from || dateRange.to)) {
       const rowDate = row[dateCol];
       if (typeof rowDate === 'string') {
@@ -760,6 +777,9 @@ export default function SuperBankPage() {
           onDateRangeChange={setDateRange}
           onDownload={handleDownload}
           downloadDisabled={selectedRows.size === 0}
+          searchField={searchField}
+          onSearchFieldChange={setSearchField}
+          searchFieldOptions={['all', ...superHeader]}
         />
         {/* Tag filter pills section below controls */}
         <TagFilterPills

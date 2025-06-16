@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Modal from '../../components/Modals/Modal';
 import { RiAccountPinCircleLine, RiAddLine, RiPriceTag3Line, RiEdit2Line, RiCloseLine } from 'react-icons/ri';
+import HeaderEditor from '../../components/HeaderEditor';
 
 interface Account {
   id: string;
@@ -19,6 +20,12 @@ interface AccountsClientProps {
   onAccountClick?: (account: Account) => void;
 }
 
+// Add type definitions above the component
+type Condition = {
+  if: { field: string; op: string };
+  then: { [key: string]: string };
+};
+
 export default function AccountsClient({ bankId, onAccountClick }: AccountsClientProps) {
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -33,6 +40,21 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
     ifscCode: '',
     tags: [] as string[],
   });
+  const [bankName, setBankName] = useState<string>("");
+  const [bankHeader, setBankHeader] = useState<string[]>([]);
+  const [headerInputs, setHeaderInputs] = useState<string[]>([]);
+  const [headerLoading, setHeaderLoading] = useState(false);
+  const [headerError, setHeaderError] = useState<string | null>(null);
+  const [headerSuccess, setHeaderSuccess] = useState<string | null>(null);
+  const [headerEditing, setHeaderEditing] = useState(false);
+  const [showMapping, setShowMapping] = useState(false);
+  const [superHeaders, setSuperHeaders] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<{ [key: string]: string }>({});
+  const [conditions, setConditions] = useState<Condition[]>([]);
+  const [mappingLoading, setMappingLoading] = useState(false);
+  const [mappingError, setMappingError] = useState<string | null>(null);
+  const [mappingSuccess, setMappingSuccess] = useState<string | null>(null);
+  const [newCond, setNewCond] = useState({ ifField: '', ifOp: '', then: [{ field: '', value: '' }] });
 
   useEffect(() => {
     if (!bankId) {
@@ -62,6 +84,57 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
     };
     fetchAccounts();
   }, [bankId]);
+
+  useEffect(() => {
+    if (!bankId) return;
+    fetch(`/api/bank`)
+      .then(res => res.json())
+      .then((banks: { id: string; bankName: string }[]) => {
+        const bank = Array.isArray(banks) ? banks.find((b) => b.id === bankId) : null;
+        setBankName(bank?.bankName || "");
+      });
+  }, [bankId]);
+
+  useEffect(() => {
+    if (!bankId || !bankName) return;
+    setHeaderLoading(true);
+    setHeaderError(null);
+    setHeaderSuccess(null);
+    fetch(`/api/bank-header?bankName=${encodeURIComponent(bankName)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data.header)) {
+          setBankHeader(data.header);
+          setHeaderInputs(data.header);
+        } else {
+          setBankHeader([]);
+          setHeaderInputs([]);
+        }
+      })
+      .catch(() => setHeaderError("Failed to fetch bank header"))
+      .finally(() => setHeaderLoading(false));
+  }, [bankId, bankName]);
+
+  useEffect(() => {
+    fetch(`/api/bank-header?bankName=SUPER%20BANK`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data.header)) setSuperHeaders(data.header);
+        else setSuperHeaders([]);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!bankId || !bankName) return;
+    fetch(`/api/bank-header?bankName=${encodeURIComponent(bankName)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.mapping) setMapping(data.mapping);
+        else setMapping({});
+        if (data && data.conditions && Array.isArray(data.conditions)) setConditions(data.conditions);
+        else setConditions([]);
+      });
+  }, [bankId, bankName]);
 
   const handleAddAccount = () => {
     setSelectedAccount(null);
@@ -154,6 +227,96 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
     }
   };
 
+  const handleHeaderInputChange = (idx: number, value: string) => {
+    setHeaderInputs(inputs => inputs.map((h, i) => i === idx ? value : h));
+  };
+
+  const handleAddHeaderInput = () => {
+    setHeaderInputs(inputs => [...inputs, ""]);
+  };
+
+  const handleRemoveHeaderInput = (idx: number) => {
+    setHeaderInputs(inputs => inputs.filter((_, i) => i !== idx));
+  };
+
+  const handleHeaderSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setHeaderLoading(true);
+    setHeaderError(null);
+    setHeaderSuccess(null);
+    const headerArr = headerInputs.map(h => h.trim()).filter(Boolean);
+    if (!headerArr.length) {
+      setHeaderError("Header cannot be empty");
+      setHeaderLoading(false);
+      return;
+    }
+    try {
+      const res = await fetch("/api/bank-header", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bankName, bankId, header: headerArr })
+      });
+      if (!res.ok) throw new Error("Failed to save header");
+      setBankHeader(headerArr);
+      setHeaderSuccess("Header saved!");
+      setHeaderEditing(false);
+    } catch {
+      setHeaderError("Failed to save header");
+    } finally {
+      setHeaderLoading(false);
+    }
+  };
+
+  const handleSaveMapping = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMappingLoading(true);
+    setMappingError(null);
+    setMappingSuccess(null);
+    try {
+      const res = await fetch('/api/bank-header', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bankName, bankId, header: bankHeader, mapping, conditions }),
+      });
+      if (!res.ok) throw new Error('Failed to save mapping');
+      setMappingSuccess('Mapping saved!');
+      setShowMapping(false);
+    } catch {
+      setMappingError('Failed to save mapping');
+    } finally {
+      setMappingLoading(false);
+    }
+  };
+
+  const addCondition = () => {
+    setConditions(prev => [...prev, { if: { field: '', op: 'present' }, then: { "": "" } }]);
+  };
+
+  const removeCondition = (idx: number) => {
+    setConditions(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const addThenField = () => {
+    setNewCond(nc => ({
+      ...nc,
+      then: [...nc.then, { field: '', value: '' }]
+    }));
+  };
+
+  const removeThenField = (idx: number) => {
+    setNewCond(nc => ({
+      ...nc,
+      then: nc.then.filter((_, i) => i !== idx)
+    }));
+  };
+
+  const updateThenField = (idx: number, key: 'field' | 'value', value: string) => {
+    setNewCond(nc => ({
+      ...nc,
+      then: nc.then.map((item, i) => i === idx ? { ...item, [key]: value } : item)
+    }));
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[200px]">
@@ -171,167 +334,373 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
   }
 
   return (
-    <div className="space-y-6 px-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold text-gray-800">Accounts</h2>
-        <button
-          onClick={handleAddAccount}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-        >
-          <RiAddLine className="text-lg" />
-          Add Account
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
-        {accounts.length === 0 ? (
-          <div className="col-span-full text-center py-8 sm:py-12 text-gray-500">
-            No accounts added yet. Click &quot;Add Account&quot; to get started.
-          </div>
-        ) : (
-          accounts.map((account) => (
-            <div
-              key={account.id}
-              onClick={() => {
-                if (onAccountClick) {
-                  onAccountClick(account);
-                } else {
-                  router.push(
-                    `/banks/statements?type=statements&bankId=${account.bankId}&accountId=${account.id}&accountName=${encodeURIComponent(account.accountHolderName)}`
-                  );
-                }
-              }}
-              className="cursor-pointer relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
+    <div className="min-h-screen py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
+      <div className="mb-6 p-4 bg-blue-50 rounded-lg shadow relative">
+        <h2 className="font-bold text-blue-700 mb-2">Bank Statement Header</h2>
+        <div className="absolute top-4 right-4 flex gap-2">
+          {!headerEditing && (
+            <button
+              type="button"
+              className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all"
+              onClick={() => setHeaderEditing(true)}
+              aria-label="Edit Header"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-50 rounded-lg">
-                    <RiAccountPinCircleLine className="text-blue-500 text-xl" />
+              <RiEdit2Line size={20} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="p-2 bg-green-500 hover:bg-green-600 text-white rounded-full shadow focus:outline-none focus:ring-2 focus:ring-green-400 transition-all"
+            onClick={() => setShowMapping(true)}
+            aria-label="Map Header"
+          >
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 9l5-5 5 5M12 4v12" /></svg>
+          </button>
+        </div>
+        {headerLoading ? (
+          <div className="text-gray-500">Loading header...</div>
+        ) : (
+          <>
+            <div className="mb-2 text-sm text-gray-700">
+              <span className="font-semibold">Current Header:</span>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {bankHeader.length > 0 ? (
+                  bankHeader.map((col, idx) => (
+                    <span
+                      key={idx}
+                      className="px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 rounded-full border border-blue-200 shadow text-xs font-medium"
+                    >
+                      {col}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-gray-400">No header set</span>
+                )}
+              </div>
+            </div>
+            {headerEditing && (
+              <HeaderEditor
+                headerInputs={headerInputs}
+                onHeaderInputChange={handleHeaderInputChange}
+                onAddHeaderInput={handleAddHeaderInput}
+                onRemoveHeaderInput={handleRemoveHeaderInput}
+                onSave={handleHeaderSave}
+                onCancel={() => setHeaderEditing(false)}
+                loading={headerLoading}
+                error={headerError}
+                success={headerSuccess}
+              />
+            )}
+          </>
+        )}
+        {showMapping && (
+          <Modal isOpen={showMapping} onClose={() => setShowMapping(false)} title={`Map to Super Bank Header`}>
+            <form onSubmit={handleSaveMapping} className="space-y-4">
+              <div className="flex flex-col gap-3">
+                <div className="font-semibold text-blue-700">Advanced Field Conditions</div>
+                {conditions.map((cond, idx) => (
+                  <div key={idx} className="flex flex-col gap-2 bg-white border border-blue-100 rounded px-2 py-1 text-xs mb-2">
+                    <div className="flex items-center gap-2">
+                      <span>If</span>
+                      <select value={cond.if.field} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, field: e.target.value } } : c))}>
+                        <option value="">Select field</option>
+                        {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
+                      </select>
+                      <select value={cond.if.op} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, op: e.target.value } } : c))}>
+                        <option value="present">is present</option>
+                        <option value="not_present">is not present</option>
+                      </select>
+                      <span>then</span>
+                      {Object.entries(cond.then).map(([field, value], pairIdx) => (
+                        <span key={pairIdx} className="flex items-center gap-1">
+                          <select
+                            value={field}
+                            onChange={e => {
+                              const newField = e.target.value;
+                              setConditions(prev => prev.map((c, i) =>
+                                i === idx
+                                  ? { ...c, then: { ...Object.fromEntries(Object.entries(c.then).map(([f, v], j) => j === pairIdx ? [newField, v] : [f, v])) } }
+                                  : c
+                              ));
+                            }}
+                          >
+                            <option value="">Select field</option>
+                            {superHeaders.map((sh, i) => <option key={i} value={sh}>{sh}</option>)}
+                          </select>
+                          <span>=</span>
+                          <input
+                            type="text"
+                            value={value}
+                            onChange={e => {
+                              const newValue = e.target.value;
+                              setConditions(prev => prev.map((c, i) =>
+                                i === idx
+                                  ? { ...c, then: { ...c.then, [field]: newValue } }
+                                  : c
+                              ));
+                            }}
+                            className="border rounded px-1 w-24"
+                            placeholder="Value or field ref"
+                          />
+                        </span>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConditions(prev => prev.map((c, i) =>
+                            i === idx
+                              ? { ...c, then: { ...c.then, "": "" } }
+                              : c
+                          ));
+                        }}
+                        className="ml-2 px-2 py-1 bg-blue-500 text-white rounded"
+                      >
+                        Add field
+                      </button>
+                      <button type="button" onClick={() => removeCondition(idx)} className="ml-2 text-red-500">✕</button>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-medium text-gray-900">{account.accountHolderName}</h3>
-                    <p className="text-sm text-gray-500">Account Number: {account.accountNumber}</p>
+                ))}
+                <div className="flex flex-col gap-2 bg-white border border-blue-100 rounded px-2 py-1 text-xs mb-2">
+                  <div className="flex items-center gap-2">
+                    <span>If</span>
+                    <select value={newCond.ifField} onChange={e => setNewCond(nc => ({ ...nc, ifField: e.target.value }))}>
+                      <option value="">Select field</option>
+                      {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
+                    </select>
+                    <select value={newCond.ifOp} onChange={e => setNewCond(nc => ({ ...nc, ifOp: e.target.value }))}>
+                      <option value="present">is present</option>
+                      <option value="not_present">is not present</option>
+                    </select>
+                    <span>then</span>
+                    {newCond.then.map((thenItem, i) => (
+                      <span key={i} className="flex items-center gap-1">
+                        <select
+                          value={thenItem.field}
+                          onChange={e => updateThenField(i, 'field', e.target.value)}
+                        >
+                          <option value="">Select field</option>
+                          {superHeaders.map((sh, idx) => <option key={idx} value={sh}>{sh}</option>)}
+                        </select>
+                        <span>=</span>
+                        <input
+                          type="text"
+                          value={thenItem.value}
+                          onChange={e => updateThenField(i, 'value', e.target.value)}
+                          className="border rounded px-1 w-24"
+                          placeholder="Value or field ref"
+                        />
+                        <button type="button" onClick={() => removeThenField(i)} className="text-red-500">✕</button>
+                      </span>
+                    ))}
+                    <button type="button" onClick={addThenField} className="ml-2 px-2 py-1 bg-blue-500 text-white rounded">Add field</button>
+                    <button type="button" onClick={addCondition} className="ml-2 px-2 py-1 bg-green-500 text-white rounded">Add Condition</button>
                   </div>
                 </div>
+              </div>
+              <div className="flex flex-col gap-3 mt-2">
+                {bankHeader.map((bh, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="min-w-[120px] px-2 py-1 bg-blue-100 rounded text-blue-700 text-xs font-medium border border-blue-200">{bh}</span>
+                    <span className="text-gray-500">→</span>
+                    <select
+                      className="rounded border px-2 py-1 text-sm"
+                      value={mapping[bh] || ''}
+                      onChange={e => setMapping(m => ({ ...m, [bh]: e.target.value }))}
+                    >
+                      <option value="">Ignore</option>
+                      {superHeaders.map((sh, i) => (
+                        <option key={i} value={sh}>{sh}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-4 justify-end">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold disabled:opacity-50"
+                  disabled={mappingLoading}
+                >
+                  {mappingLoading ? 'Saving...' : 'Save Mapping'}
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg shadow hover:bg-gray-300 transition-all font-semibold w-fit"
+                  onClick={() => setShowMapping(false)}
+                  disabled={mappingLoading}
+                >
+                  Cancel
+                </button>
+              </div>
+              {mappingError && <div className="text-red-600 mt-2">{mappingError}</div>}
+              {mappingSuccess && <div className="text-green-600 mt-2">{mappingSuccess}</div>}
+            </form>
+          </Modal>
+        )}
+      </div>
+      <div className="space-y-6 px-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold text-gray-800">Accounts</h2>
+          <button
+            onClick={handleAddAccount}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            <RiAddLine className="text-lg" />
+            Add Account
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
+          {accounts.length === 0 ? (
+            <div className="col-span-full text-center py-8 sm:py-12 text-gray-500">
+              No accounts added yet. Click &quot;Add Account&quot; to get started.
+            </div>
+          ) : (
+            accounts.map((account) => (
+              <div
+                key={account.id}
+                onClick={() => {
+                  if (onAccountClick) {
+                    onAccountClick(account);
+                  } else {
+                    router.push(
+                      `/banks/statements?type=statements&bankId=${account.bankId}&accountId=${account.id}&accountName=${encodeURIComponent(account.accountHolderName)}`
+                    );
+                  }
+                }}
+                className="cursor-pointer relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-50 rounded-lg">
+                      <RiAccountPinCircleLine className="text-blue-500 text-xl" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">{account.accountHolderName}</h3>
+                      <p className="text-sm text-gray-500">Account Number: {account.accountNumber}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditAccount(account);
+                    }}
+                    className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <RiEdit2Line className="text-gray-400 hover:text-gray-600" />
+                  </button>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {account.tags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
+                    >
+                      <RiPriceTag3Line className="mr-1" />
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm text-gray-500">IFSC: {account.ifscCode}</p>
+                </div>
+
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleEditAccount(account);
+                    handleDeleteAccount(account.id);
                   }}
-                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
-                  <RiEdit2Line className="text-gray-400 hover:text-gray-600" />
+                  <RiCloseLine className="text-lg" />
                 </button>
               </div>
+            ))
+          )}
+        </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                {account.tags.map((tag, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
-                  >
-                    <RiPriceTag3Line className="mr-1" />
-                    {tag}
-                  </span>
-                ))}
-              </div>
+        <Modal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          title={isEditing ? 'Edit Account' : 'Add New Account'}
+        >
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="accountHolderName" className="block text-sm font-medium text-gray-700">
+                Account Holder Name
+              </label>
+              <input
+                type="text"
+                id="accountHolderName"
+                value={formData.accountHolderName}
+                onChange={(e) => setFormData({ ...formData, accountHolderName: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                required
+              />
+            </div>
 
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-sm text-gray-500">IFSC: {account.ifscCode}</p>
-              </div>
+            <div>
+              <label htmlFor="accountNumber" className="block text-sm font-medium text-gray-700">
+                Account Number
+              </label>
+              <input
+                type="text"
+                id="accountNumber"
+                value={formData.accountNumber}
+                onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                required
+              />
+            </div>
 
+            <div>
+              <label htmlFor="ifscCode" className="block text-sm font-medium text-gray-700">
+                IFSC Code
+              </label>
+              <input
+                type="text"
+                id="ifscCode"
+                value={formData.ifscCode}
+                onChange={(e) => setFormData({ ...formData, ifscCode: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="tags" className="block text-sm font-medium text-gray-700">
+                Tags (comma-separated)
+              </label>
+              <input
+                type="text"
+                id="tags"
+                value={formData.tags.join(', ')}
+                onChange={(e) => setFormData({ ...formData, tags: e.target.value.split(',').map(tag => tag.trim()) })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteAccount(account.id);
-                }}
-                className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
               >
-                <RiCloseLine className="text-lg" />
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600"
+              >
+                {isEditing ? 'Update' : 'Add'} Account
               </button>
             </div>
-          ))
-        )}
+          </form>
+        </Modal>
       </div>
-
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={isEditing ? 'Edit Account' : 'Add New Account'}
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="accountHolderName" className="block text-sm font-medium text-gray-700">
-              Account Holder Name
-            </label>
-            <input
-              type="text"
-              id="accountHolderName"
-              value={formData.accountHolderName}
-              onChange={(e) => setFormData({ ...formData, accountHolderName: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="accountNumber" className="block text-sm font-medium text-gray-700">
-              Account Number
-            </label>
-            <input
-              type="text"
-              id="accountNumber"
-              value={formData.accountNumber}
-              onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="ifscCode" className="block text-sm font-medium text-gray-700">
-              IFSC Code
-            </label>
-            <input
-              type="text"
-              id="ifscCode"
-              value={formData.ifscCode}
-              onChange={(e) => setFormData({ ...formData, ifscCode: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="tags" className="block text-sm font-medium text-gray-700">
-              Tags (comma-separated)
-            </label>
-            <input
-              type="text"
-              id="tags"
-              value={formData.tags.join(', ')}
-              onChange={(e) => setFormData({ ...formData, tags: e.target.value.split(',').map(tag => tag.trim()) })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600"
-            >
-              {isEditing ? 'Update' : 'Add'} Account
-            </button>
-          </div>
-        </form>
-      </Modal>
     </div>
   );
 } 

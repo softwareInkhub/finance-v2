@@ -73,6 +73,7 @@ function StatementsContent() {
   const [tagFilters, setTagFilters] = useState<string[]>([]);
   const [transactionHeaders, setTransactionHeaders] = useState<string[]>([]);
   const [uploadTags, setUploadTags] = useState('');
+  const [searchField, setSearchField] = useState('all');
 
   useEffect(() => {
     const fetchStatements = async () => {
@@ -241,7 +242,13 @@ function StatementsContent() {
       if (!tags.some(t => tagFilters.includes(t.name))) return false;
     }
     // Search
-    if (search && !Object.values(tx).some(val => String(val).toLowerCase().includes(search.toLowerCase()))) return false;
+    if (
+      search &&
+      (searchField === 'all'
+        ? !Object.values(tx).some(val => String(val).toLowerCase().includes(search.toLowerCase()))
+        : !String(tx[searchField] || '').toLowerCase().includes(search.toLowerCase()))
+    )
+      return false;
     // Date range (if there is a date field)
     const dateKey = Object.keys(tx).find(k => k.toLowerCase().includes('date'));
     if (dateKey && (dateRange.from || dateRange.to)) {
@@ -437,6 +444,9 @@ function StatementsContent() {
               dateRange={dateRange}
               onDateRangeChange={setDateRange}
               onDownload={() => {}}
+              searchField={searchField}
+              onSearchFieldChange={setSearchField}
+              searchFieldOptions={['all', ...transactionHeaders]}
             />
             
             {/* Tag Filters */}

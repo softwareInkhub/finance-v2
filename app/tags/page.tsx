@@ -22,7 +22,8 @@ export default function TagsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/tags');
+      const userId = localStorage.getItem('userId');
+      const res = await fetch(`/api/tags?userId=${userId}`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setTags(data);
@@ -44,10 +45,11 @@ export default function TagsPage() {
     e.preventDefault();
     if (!newTag.name.trim()) return;
     try {
+      const userId = localStorage.getItem('userId');
       const res = await fetch('/api/tags', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTag),
+        body: JSON.stringify({ ...newTag, userId }),
       });
       if (!res.ok) throw new Error('Failed to add tag');
       setNewTag({ name: '', color: '#60a5fa' });

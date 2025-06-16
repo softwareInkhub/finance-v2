@@ -8,6 +8,9 @@ interface TransactionFilterBarProps {
   onDateRangeChange: (range: { from: string; to: string }) => void;
   onDownload: () => void;
   downloadDisabled?: boolean;
+  searchField?: string;
+  onSearchFieldChange?: (v: string) => void;
+  searchFieldOptions?: string[];
 }
 
 const TransactionFilterBar: React.FC<TransactionFilterBarProps> = ({
@@ -17,16 +20,32 @@ const TransactionFilterBar: React.FC<TransactionFilterBarProps> = ({
   onDateRangeChange,
   onDownload,
   downloadDisabled,
+  searchField,
+  onSearchFieldChange,
+  searchFieldOptions,
 }) => (
   <div className="w-full max-w-5xl mx-auto bg-white rounded-lg shadow-sm p-3 flex flex-col gap-3 mb-4">
-    <div className="flex flex-col md:flex-row gap-2">
-      <input
-        type="text"
-        placeholder="Search..."
-        className="border px-3 py-2 rounded shadow-sm text-sm flex-1 h-10"
-        value={search}
-        onChange={e => onSearchChange(e.target.value)}
-      />
+    <div className="flex flex-col md:flex-row gap-2 items-center">
+      <div className="flex flex-row w-full md:w-auto gap-2 items-center">
+        <input
+          type="text"
+          placeholder="Search..."
+          className="border px-3 py-2 rounded shadow-sm text-sm flex-1 h-10"
+          value={search}
+          onChange={e => onSearchChange(e.target.value)}
+        />
+        {searchFieldOptions && onSearchFieldChange && (
+          <select
+            value={searchField}
+            onChange={e => onSearchFieldChange(e.target.value)}
+            className="border px-2 py-2 rounded text-sm h-10 min-w-[90px]"
+          >
+            {searchFieldOptions.map(opt => (
+              <option key={opt} value={opt}>{opt === 'all' ? 'All' : opt}</option>
+            ))}
+          </select>
+        )}
+      </div>
       <div className="flex flex-col flex-1">
         <label className="text-xs text-gray-500 mb-1 md:mb-0 md:sr-only">From</label>
         <input

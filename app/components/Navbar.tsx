@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import { 
   RiMenuLine, 
@@ -12,7 +12,20 @@ import { useRouter } from 'next/navigation';
 export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    const userId = localStorage.getItem('userId');
+    if (userId) {
+      fetch(`/api/users?id=${userId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.email) setUserEmail(data.email);
+        })
+        .catch(() => setUserEmail(null));
+    }
+  }, []);
 
   const handleSidebarItemClick = () => {
     setIsMobileMenuOpen(false);
@@ -43,7 +56,10 @@ export default function Navbar() {
             <RiNotification3Line className="text-xl text-gray-600 group-hover:text-blue-600 transition-colors duration-200" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-md border-2 border-white"></span>
           </button>
-          <div className="relative">
+          <div className="relative flex items-center gap-2">
+            {userEmail && (
+              <span className="text-sm text-gray-700 font-medium truncate max-w-[120px]" title={userEmail}>{userEmail}</span>
+            )}
             <button
               className="p-2 rounded-full hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 transition-colors duration-200 group shadow-sm"
               onClick={() => setShowProfileMenu((v) => !v)}

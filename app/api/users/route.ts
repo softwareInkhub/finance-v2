@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DynamoDBClient, PutItemCommand,ScanCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, PutItemCommand, ScanCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -52,4 +52,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, user: { email, name: user.name.S, userId: user.userId.S } });
   }
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+}
+
+// GET /api/users?id=...
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get('id');
+  if (!id) {
+    return NextResponse.json({ error: 'User id required' }, { status: 400 });
+  }
+  const getCmd = new GetItemCommand({
+    TableName: USERS_TABLE,
+    Key: { id: { S: id } },
+  });
+  const result = await client.send(getCmd);
+  if (!result.Item) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+  return NextResponse.json({ email: result.Item.email.S });
 } 

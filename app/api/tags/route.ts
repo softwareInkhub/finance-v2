@@ -2,15 +2,22 @@ import { NextResponse } from 'next/server';
 import { ScanCommand, PutCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, TABLES } from '../aws-client';
 import { v4 as uuidv4 } from 'uuid';
+import { ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
 export const runtime = 'nodejs';
 
 // GET /api/tags
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const result = await docClient.send(
-      new ScanCommand({ TableName: TABLES.TAGS })
-    );
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    const params: ScanCommandInput = { TableName: TABLES.TAGS };
+    if (userId) {
+      params.FilterExpression = '#userId = :userId';
+      params.ExpressionAttributeNames = { '#userId': 'userId' };
+      params.ExpressionAttributeValues = { ':userId': userId };
+    }
+    const result = await docClient.send(new ScanCommand(params));
     return NextResponse.json(result.Items || []);
   } catch (error) {
     console.error('Error fetching tags:', error);
@@ -21,12 +28,13 @@ export async function GET() {
 // POST /api/tags
 export async function POST(request: Request) {
   try {
-    const { name, color } = await request.json();
-    if (!name) return NextResponse.json({ error: 'Tag name required' }, { status: 400 });
+    const { name, color, userId } = await request.json();
+    if (!name || !userId) return NextResponse.json({ error: 'Tag name and userId required' }, { status: 400 });
     const tag = {
       id: uuidv4(),
       name,
       color: color || '#60a5fa', // default: light blue
+      userId,
       createdAt: new Date().toISOString(),
     };
     await docClient.send(new PutCommand({ TableName: TABLES.TAGS, Item: tag }));

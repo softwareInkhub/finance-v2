@@ -1,21 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
+
+interface EditBank {
+  id: string;
+  bankName: string;
+  tags: string[];
+}
 
 interface CreateBankModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (bankName: string, tags: string[]) => void;
+  editBank?: EditBank | null;
+  onUpdate?: (id: string, bankName: string, tags: string[]) => void;
 }
 
-const CreateBankModal: React.FC<CreateBankModalProps> = ({ isOpen, onClose, onCreate }) => {
+const CreateBankModal: React.FC<CreateBankModalProps> = ({ isOpen, onClose, onCreate, editBank, onUpdate }) => {
   const [bankName, setBankName] = useState('');
   const [tags, setTags] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (editBank) {
+      setBankName(editBank.bankName);
+      setTags(editBank.tags.join(', '));
+    } else {
+      setBankName('');
+      setTags('');
+    }
+  }, [editBank, isOpen]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    onCreate(bankName.trim(), tags.split(',').map(t => t.trim()).filter(Boolean));
+    const tagArr = tags.split(',').map(t => t.trim()).filter(Boolean);
+    if (editBank && onUpdate) {
+      await onUpdate(editBank.id, bankName.trim(), tagArr);
+    } else {
+      onCreate(bankName.trim(), tagArr);
+    }
     setIsSubmitting(false);
     setBankName('');
     setTags('');
@@ -23,7 +46,7 @@ const CreateBankModal: React.FC<CreateBankModalProps> = ({ isOpen, onClose, onCr
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create New Bank">
+    <Modal isOpen={isOpen} onClose={onClose} title={editBank ? 'Edit Bank' : 'Create New Bank'}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="bankName" className="block text-sm font-medium text-gray-700">Bank Name</label>
@@ -63,7 +86,7 @@ const CreateBankModal: React.FC<CreateBankModalProps> = ({ isOpen, onClose, onCr
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             disabled={isSubmitting}
           >
-            {isSubmitting ? 'Creating...' : 'Create'}
+            {isSubmitting ? (editBank ? 'Updating...' : 'Creating...') : (editBank ? 'Update' : 'Create')}
           </button>
         </div>
       </form>

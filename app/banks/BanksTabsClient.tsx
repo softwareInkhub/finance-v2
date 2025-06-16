@@ -4,7 +4,7 @@ import AccountsClient from '../sub-pages/accounts/AccountsClient';
 import StatementsPage from '../sub-pages/statements/page';
 import SuperBankPage from '../sub-pages/super-bank/page';
 import CreateBankModal from '../components/Modals/CreateBankModal';
-import { RiBankLine, RiAddLine, RiPriceTag3Line, RiCloseLine } from 'react-icons/ri';
+import { RiBankLine, RiAddLine, RiPriceTag3Line, RiCloseLine, RiEdit2Line, RiDeleteBin6Line } from 'react-icons/ri';
 import { Bank } from '../types/aws';
 import { useRouter, usePathname } from 'next/navigation';
 import BanksSidebar from '../components/BanksSidebar';
@@ -26,8 +26,10 @@ export default function BanksTabsClient() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editBank, setEditBank] = useState<Bank | null>(null);
   const router = useRouter();
   const pathname = usePathname();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchBanks = async () => {
@@ -50,6 +52,18 @@ export default function BanksTabsClient() {
     fetchBanks();
   }, []);
 
+  useEffect(() => {
+    const userId = localStorage.getItem('userId');
+    if (userId) {
+      fetch(`/api/users?id=${userId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.email) setUserEmail(data.email);
+        })
+        .catch(() => setUserEmail(null));
+    }
+  }, []);
+
   const handleCreateBank = async (bankName: string, tags: string[]) => {
     setError(null);
     try {
@@ -69,6 +83,23 @@ export default function BanksTabsClient() {
     } catch (error) {
       console.error('Error creating bank:', error);
       setError(error instanceof Error ? error.message : 'Failed to create bank. Please try again.');
+    }
+  };
+
+  const handleUpdateBank = async (id: string, bankName: string, tags: string[]) => {
+    try {
+      const response = await fetch(`/api/bank/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bankName, tags }),
+      });
+      if (!response.ok) throw new Error('Failed to update bank');
+      const updatedBank = await response.json();
+      setBanks(prev => prev.map(b => b.id === id ? updatedBank : b));
+      setEditBank(null);
+      setIsModalOpen(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update bank');
     }
   };
 
@@ -128,6 +159,22 @@ export default function BanksTabsClient() {
     const newTabs = tabs.filter(tab => tab.key !== tabKey);
     setTabs(newTabs);
     if (activeTab === tabKey) setActiveTab('overview');
+  };
+
+  const handleEditBank = (bank: Bank) => {
+    setEditBank(bank);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteBank = async (bankId: string) => {
+    if (!window.confirm('Are you sure you want to delete this bank?')) return;
+    try {
+      const response = await fetch(`/api/bank/${bankId}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete bank');
+      setBanks(prev => prev.filter(b => b.id !== bankId));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete bank');
+    }
   };
 
   // Render tab bar and content
@@ -221,8 +268,10 @@ export default function BanksTabsClient() {
               )}
               <CreateBankModal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
+                onClose={() => { setIsModalOpen(false); setEditBank(null); }}
                 onCreate={handleCreateBank}
+                editBank={editBank}
+                onUpdate={handleUpdateBank}
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
                 {isFetching ? (
@@ -240,6 +289,24 @@ export default function BanksTabsClient() {
                       onClick={() => handleBankCardClick(bank)}
                       className="cursor-pointer relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
                     >
+                      {userEmail === "nitesh.inkhub@gmail.com" && (
+                        <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                          <button
+                            className="p-1 bg-blue-100 hover:bg-blue-200 rounded-full"
+                            onClick={e => { e.stopPropagation(); handleEditBank(bank); }}
+                            title="Edit Bank"
+                          >
+                            <RiEdit2Line className="text-blue-600" />
+                          </button>
+                          <button
+                            className="p-1 bg-red-100 hover:bg-red-200 rounded-full"
+                            onClick={e => { e.stopPropagation(); handleDeleteBank(bank.id); }}
+                            title="Delete Bank"
+                          >
+                            <RiDeleteBin6Line className="text-red-600" />
+                          </button>
+                        </div>
+                      )}
                       <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-4xl sm:text-5xl pointer-events-none select-none rotate-12">
                         <RiBankLine />
                       </div>
