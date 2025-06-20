@@ -22,7 +22,7 @@ interface AccountsClientProps {
 
 // Add type definitions above the component
 type Condition = {
-  if: { field: string; op: string };
+  if: { field: string; op: string; value?: string };
   then: { [key: string]: string };
 };
 
@@ -54,7 +54,7 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
   const [mappingLoading, setMappingLoading] = useState(false);
   const [mappingError, setMappingError] = useState<string | null>(null);
   const [mappingSuccess, setMappingSuccess] = useState<string | null>(null);
-  const [newCond, setNewCond] = useState({ ifField: '', ifOp: '', then: [{ field: '', value: '' }] });
+  const [newCond, setNewCond] = useState({ ifField: '', ifOp: '', ifValue: '', then: [{ field: '', value: '' }] });
 
   useEffect(() => {
     if (!bankId) {
@@ -273,12 +273,14 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
     setMappingError(null);
     setMappingSuccess(null);
     try {
+      console.log('Saving mapping with conditions:', conditions);
       const res = await fetch('/api/bank-header', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bankName, bankId, header: bankHeader, mapping, conditions }),
       });
       if (!res.ok) throw new Error('Failed to save mapping');
+      console.log('Mapping and conditions saved successfully!');
       setMappingSuccess('Mapping saved!');
       setShowMapping(false);
     } catch {
@@ -289,7 +291,26 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
   };
 
   const addCondition = () => {
-    setConditions(prev => [...prev, { if: { field: '', op: 'present' }, then: { "": "" } }]);
+    if (
+      newCond.ifField &&
+      newCond.ifOp &&
+      (['present', 'not_present'].includes(newCond.ifOp) || newCond.ifValue) &&
+      newCond.then.length > 0 &&
+      newCond.then.every(t => t.field && t.value)
+    ) {
+      setConditions(prev => [
+        ...prev,
+        {
+          if: {
+            field: newCond.ifField,
+            op: newCond.ifOp,
+            ...(newCond.ifValue && !['present', 'not_present'].includes(newCond.ifOp) ? { value: newCond.ifValue } : {})
+          },
+          then: Object.fromEntries(newCond.then.map(t => [t.field, t.value]))
+        }
+      ]);
+      setNewCond({ ifField: '', ifOp: '', ifValue: '', then: [{ field: '', value: '' }] });
+    }
   };
 
   const removeCondition = (idx: number) => {
@@ -399,102 +420,162 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
               <div className="flex flex-col gap-3">
                 <div className="font-semibold text-blue-700">Advanced Field Conditions</div>
                 {conditions.map((cond, idx) => (
-                  <div key={idx} className="flex flex-col gap-2 bg-white border border-blue-100 rounded px-2 py-1 text-xs mb-2">
-                    <div className="flex items-center gap-2">
-                      <span>If</span>
-                      <select value={cond.if.field} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, field: e.target.value } } : c))}>
-                        <option value="">Select field</option>
-                        {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
-                      </select>
-                      <select value={cond.if.op} onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, op: e.target.value } } : c))}>
-                        <option value="present">is present</option>
-                        <option value="not_present">is not present</option>
-                      </select>
-                      <span>then</span>
-                      {Object.entries(cond.then).map(([field, value], pairIdx) => (
-                        <span key={pairIdx} className="flex items-center gap-1">
-                          <select
-                            value={field}
-                            onChange={e => {
-                              const newField = e.target.value;
-                              setConditions(prev => prev.map((c, i) =>
-                                i === idx
-                                  ? { ...c, then: { ...Object.fromEntries(Object.entries(c.then).map(([f, v], j) => j === pairIdx ? [newField, v] : [f, v])) } }
-                                  : c
-                              ));
-                            }}
-                          >
-                            <option value="">Select field</option>
-                            {superHeaders.map((sh, i) => <option key={i} value={sh}>{sh}</option>)}
-                          </select>
-                          <span>=</span>
-                          <input
-                            type="text"
-                            value={value}
-                            onChange={e => {
-                              const newValue = e.target.value;
-                              setConditions(prev => prev.map((c, i) =>
-                                i === idx
-                                  ? { ...c, then: { ...c.then, [field]: newValue } }
-                                  : c
-                              ));
-                            }}
-                            className="border rounded px-1 w-24"
-                            placeholder="Value or field ref"
-                          />
-                        </span>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConditions(prev => prev.map((c, i) =>
-                            i === idx
-                              ? { ...c, then: { ...c.then, "": "" } }
-                              : c
-                          ));
-                        }}
-                        className="ml-2 px-2 py-1 bg-blue-500 text-white rounded"
-                      >
-                        Add field
-                      </button>
-                      <button type="button" onClick={() => removeCondition(idx)} className="ml-2 text-red-500">✕</button>
-                    </div>
+                  <div key={idx} className="flex flex-wrap items-center gap-2 py-1 border-b border-gray-200">
+                    <span>If</span>
+                    <select
+                      value={cond.if.field}
+                      onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, field: e.target.value } } : c))}
+                    >
+                      <option value="">Select field</option>
+                      {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
+                    </select>
+                    <select
+                      value={cond.if.op}
+                      onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, op: e.target.value, value: '' } } : c))}
+                    >
+                      <option value="">Select operator</option>
+                      <option value="present">is present</option>
+                      <option value="not_present">is not present</option>
+                      <option value="==">==</option>
+                      <option value="!=">!=</option>
+                      <option value=">=">&gt;=</option>
+                      <option value="<=">&lt;=</option>
+                      <option value=">">&gt;</option>
+                      <option value="<">&lt;</option>
+                    </select>
+                    {!['present', 'not_present'].includes(cond.if.op) && (
+                      <input
+                        type="text"
+                        value={cond.if.value || ''}
+                        onChange={e => setConditions(prev => prev.map((c, i) => i === idx ? { ...c, if: { ...c.if, value: e.target.value } } : c))}
+                        placeholder="Comparison val"
+                        className="border rounded px-1 w-24"
+                      />
+                    )}
+                    <span>then</span>
+                    {Object.entries(cond.then).map(([field, value], tIdx) => (
+                      <span key={tIdx} className="flex items-center gap-1">
+                        <select
+                          value={field}
+                          onChange={e => {
+                            const newField = e.target.value;
+                            setConditions(prev => prev.map((c, i) => {
+                              if (i !== idx) return c;
+                              const newThen = { ...c.then };
+                              delete newThen[field];
+                              newThen[newField] = value;
+                              return { ...c, then: newThen };
+                            }));
+                          }}
+                        >
+                          <option value="">Select field</option>
+                          {superHeaders.map((sh, i) => <option key={i} value={sh}>{sh}</option>)}
+                        </select>
+                        <span>=</span>
+                        <input
+                          type="text"
+                          value={value}
+                          onChange={e => {
+                            const newValue = e.target.value;
+                            setConditions(prev => prev.map((c, i) => {
+                              if (i !== idx) return c;
+                              return { ...c, then: { ...c.then, [field]: newValue } };
+                            }));
+                          }}
+                          className="border rounded px-1 w-24"
+                          placeholder="Value or field ref"
+                        />
+                        <button type="button" onClick={() => {
+                          setConditions(prev => prev.map((c, i) => {
+                            if (i !== idx) return c;
+                            const newThen = { ...c.then };
+                            delete newThen[field];
+                            return { ...c, then: newThen };
+                          }));
+                        }} className="text-red-500">✕</button>
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConditions(prev => prev.map((c, i) => {
+                          if (i !== idx) return c;
+                          return { ...c, then: { ...c.then, '': '' } };
+                        }));
+                      }}
+                      className="ml-2 px-2 py-1 bg-blue-500 text-white rounded"
+                    >
+                      Add field
+                    </button>
+                    <button type="button" onClick={() => removeCondition(idx)} className="text-red-500 ml-2">&times;</button>
                   </div>
                 ))}
                 <div className="flex flex-col gap-2 bg-white border border-blue-100 rounded px-2 py-1 text-xs mb-2">
                   <div className="flex items-center gap-2">
                     <span>If</span>
-                    <select value={newCond.ifField} onChange={e => setNewCond(nc => ({ ...nc, ifField: e.target.value }))}>
-                      <option value="">Select field</option>
-                      {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
-                    </select>
-                    <select value={newCond.ifOp} onChange={e => setNewCond(nc => ({ ...nc, ifOp: e.target.value }))}>
-                      <option value="present">is present</option>
-                      <option value="not_present">is not present</option>
-                    </select>
-                    <span>then</span>
-                    {newCond.then.map((thenItem, i) => (
-                      <span key={i} className="flex items-center gap-1">
-                        <select
-                          value={thenItem.field}
-                          onChange={e => updateThenField(i, 'field', e.target.value)}
-                        >
+                    <div className="overflow-x-auto">
+                      <div className="flex flex-wrap items-center gap-2 py-2 min-w-[600px]">
+                        <select value={newCond.ifField} onChange={e => setNewCond(nc => ({ ...nc, ifField: e.target.value }))}>
                           <option value="">Select field</option>
-                          {superHeaders.map((sh, idx) => <option key={idx} value={sh}>{sh}</option>)}
+                          {bankHeader.map((bh, i) => <option key={i} value={bh}>{bh}</option>)}
                         </select>
-                        <span>=</span>
-                        <input
-                          type="text"
-                          value={thenItem.value}
-                          onChange={e => updateThenField(i, 'value', e.target.value)}
-                          className="border rounded px-1 w-24"
-                          placeholder="Value or field ref"
-                        />
-                        <button type="button" onClick={() => removeThenField(i)} className="text-red-500">✕</button>
-                      </span>
-                    ))}
-                    <button type="button" onClick={addThenField} className="ml-2 px-2 py-1 bg-blue-500 text-white rounded">Add field</button>
-                    <button type="button" onClick={addCondition} className="ml-2 px-2 py-1 bg-green-500 text-white rounded">Add Condition</button>
+                        <select value={newCond.ifOp} onChange={e => setNewCond(nc => ({ ...nc, ifOp: e.target.value }))}>
+                          <option value="">Select operator</option>
+                          <option value="present">is present</option>
+                          <option value="not_present">is not present</option>
+                          <option value="==">==</option>
+                          <option value="!=">!=</option>
+                          <option value=">=">&gt;=</option>
+                          <option value="<=">&lt;=</option>
+                          <option value=">">&gt;</option>
+                          <option value="<">&lt;</option>
+                        </select>
+                        {!['present', 'not_present'].includes(newCond.ifOp) && (
+                          <input
+                            type="text"
+                            value={newCond.ifValue}
+                            onChange={e => setNewCond(nc => ({ ...nc, ifValue: e.target.value }))}
+                            placeholder="Comparison value"
+                            className="border rounded px-1 w-24"
+                          />
+                        )}
+                        <span>then</span>
+                        {newCond.then.map((thenItem, i) => (
+                          <span key={i} className="flex items-center gap-1">
+                            <select
+                              value={thenItem.field}
+                              onChange={e => updateThenField(i, 'field', e.target.value)}
+                            >
+                              <option value="">Select field</option>
+                              {superHeaders.map((sh, idx) => <option key={idx} value={sh}>{sh}</option>)}
+                            </select>
+                            <span>=</span>
+                            <input
+                              type="text"
+                              value={thenItem.value}
+                              onChange={e => updateThenField(i, 'value', e.target.value)}
+                              className="border rounded px-1 w-24"
+                              placeholder="Value or field ref"
+                            />
+                            <button type="button" onClick={() => removeThenField(i)} className="text-red-500">✕</button>
+                          </span>
+                        ))}
+                        <button type="button" onClick={addThenField} className="ml-2 px-2 py-1 bg-blue-500 text-white rounded">Add field</button>
+                        <button
+                          type="button"
+                          onClick={addCondition}
+                          className="ml-2 px-2 py-1 bg-green-500 text-white rounded"
+                          disabled={
+                            !newCond.ifField ||
+                            !newCond.ifOp ||
+                            newCond.then.length === 0 ||
+                            !newCond.then.every(t => t.field && t.value)
+                          }
+                        >
+                          Add Condition
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

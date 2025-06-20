@@ -12,7 +12,8 @@ import { Transaction, TransactionRow, Tag } from '../../types/transaction';
 interface Condition {
   if: {
     field: string;
-    op: 'present' | 'not_present';
+    op: 'present' | 'not_present' | '==' | '!=' | '>=' | '<=' | '>';
+    value?: string;
   };
   then: {
     [key: string]: string;
@@ -628,10 +629,41 @@ export default function SuperBankPage() {
     const conditions = Array.isArray(rawConds) ? rawConds : [];
     for (const cond of conditions) {
       const val = row[cond.if.field];
-      if (
-        (cond.if.op === 'present' && val && val.toString().trim() !== '') ||
-        (cond.if.op === 'not_present' && (!val || val.toString().trim() === ''))
-      ) {
+      const op = cond.if.op;
+      const cmp = cond.if.value;
+      let match = false;
+      // Robust normalization
+      const valStr = (val !== undefined && val !== null) ? String(val).trim() : '';
+      const cmpStr = (cmp !== undefined && cmp !== null) ? String(cmp).trim() : '';
+      const valNum = valStr === '' ? NaN : !isNaN(Number(valStr)) ? parseFloat(valStr) : NaN;
+      const cmpNum = cmpStr === '' ? NaN : !isNaN(Number(cmpStr)) ? parseFloat(cmpStr) : NaN;
+      const bothNumeric = !isNaN(valNum) && !isNaN(cmpNum);
+      if (op === 'present') {
+        match = valStr !== '';
+      } else if (op === 'not_present') {
+        match = valStr === '';
+      } else if (op === '==') {
+        if (bothNumeric) {
+          match = valNum === cmpNum;
+        } else {
+          match = valStr === cmpStr;
+        }
+      } else if (op === '!=') {
+        if (bothNumeric) {
+          match = valNum !== cmpNum;
+        } else {
+          match = valStr !== cmpStr;
+        }
+      } else if (op === '>=') {
+        match = bothNumeric && valNum >= cmpNum;
+      } else if (op === '<=') {
+        match = bothNumeric && valNum <= cmpNum;
+      } else if (op === '>') {
+        match = bothNumeric && valNum > cmpNum;
+      } else if (op === '<') {
+        match = bothNumeric && valNum < cmpNum;
+      }
+      if (match) {
         // Evaluate Amount (support -field for negative)
         let amount: number | undefined = undefined;
         const amountField = cond.then.Amount;
@@ -652,34 +684,70 @@ export default function SuperBankPage() {
   }
 
   // Helper: get value for any column using per-bank conditions
-  function getValueForColumn(tx: Transaction, bankId: string, columnName: string): string | number | undefined {
+  function getValueForColumn(row: TransactionRow, bankId: string, columnName: string): string | number | undefined {
     const rawConds = bankMappings[bankId]?.conditions;
     const conditions = Array.isArray(rawConds) ? rawConds : [];
-    
     for (const cond of conditions) {
       if (cond.then && cond.then[columnName] !== undefined) {
-        const val = tx[cond.if.field];
-        if (
-          (cond.if.op === 'present' && val && val.toString().trim() !== '') ||
-          (cond.if.op === 'not_present' && (!val || val.toString().trim() === ''))
-        ) {
+        // Robust normalization for condition
+        const op = cond.if.op;
+        const val = row[cond.if.field];
+        const cmp = cond.if.value;
+        const valStr = (val !== undefined && val !== null) ? String(val).trim() : '';
+        const cmpStr = (cmp !== undefined && cmp !== null) ? String(cmp).trim() : '';
+        const valNum = valStr === '' ? NaN : !isNaN(Number(valStr)) ? parseFloat(valStr) : NaN;
+        const cmpNum = cmpStr === '' ? NaN : !isNaN(Number(cmpStr)) ? parseFloat(cmpStr) : NaN;
+        const bothNumeric = !isNaN(valNum) && !isNaN(cmpNum);
+        let match = false;
+        if (op === 'present') {
+          match = valStr !== '';
+        } else if (op === 'not_present') {
+          match = valStr === '';
+        } else if (op === '==') {
+          if (bothNumeric) {
+            match = valNum === cmpNum;
+          } else {
+            match = valStr === cmpStr;
+          }
+        } else if (op === '!=') {
+          if (bothNumeric) {
+            match = valNum !== cmpNum;
+          } else {
+            match = valStr !== cmpStr;
+          }
+        } else if (op === '>=') {
+          match = bothNumeric && valNum >= cmpNum;
+        } else if (op === '<=') {
+          match = bothNumeric && valNum <= cmpNum;
+        } else if (op === '>') {
+          match = bothNumeric && valNum > cmpNum;
+        } else if (op === '<') {
+          match = bothNumeric && valNum < cmpNum;
+        }
+        if (match) {
           const result = cond.then[columnName];
-          if (typeof result === 'string' && tx[result] !== undefined) {
-            const value = tx[result];
-            return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+          // If result is a field reference, resolve it
+          if (typeof result === 'string' && row[result] !== undefined) {
+            const v = row[result];
+            if (typeof v === 'string' || typeof v === 'number') return v;
+            return undefined;
           }
-          if (typeof result === 'string' && result.startsWith('-') && tx[result.slice(1)] !== undefined) {
-            const v = tx[result.slice(1)];
-            if (typeof v === 'string') return -parseFloat(v);
-            if (typeof v === 'number') return -v;
-          }
-          return result;
+          if (typeof result === 'string' || typeof result === 'number') return result;
+          return undefined;
         }
       }
     }
     // Fallback: mapped field or raw value
-    const value = tx[columnName];
-    return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+    const mapping = bankMappings[bankId]?.mapping;
+    if (mapping && mapping[columnName] && row[mapping[columnName]]) {
+      const v = row[mapping[columnName]];
+      if (typeof v === 'string' || typeof v === 'number') return v;
+      return undefined;
+    }
+    // Otherwise, return raw value
+    const v = row[columnName];
+    if (typeof v === 'string' || typeof v === 'number') return v;
+    return undefined;
   }
 
   useEffect(() => {
