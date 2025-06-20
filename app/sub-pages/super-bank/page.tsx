@@ -393,19 +393,34 @@ export default function SuperBankPage() {
     return searchMatch && dateMatch;
   });
 
-  // Helper to parse both dd/mm/yyyy and dd/mm/yy
+  // Helper to parse both dd/mm/yyyy and dd-mm-yy, and with - as separator
   function parseDate(dateStr: string): Date {
-    if (!dateStr) return new Date('1970-01-01');
-    const parts = dateStr.split('/');
-    if (parts.length === 3) {
-      const [dd, mm, origYyyy] = parts;
-      let yyyy = origYyyy;
-      if (yyyy.length === 2) {
-        yyyy = '20' + yyyy;
+    if (!dateStr || typeof dateStr !== 'string') return new Date('1970-01-01');
+
+    // Regex to match dd/mm/yyyy or dd-mm-yyyy (and yy)
+    const match = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+
+    if (match) {
+      const day = match[1];
+      const month = match[2];
+      let year = match[3];
+
+      if (year.length === 2) {
+        year = '20' + year;
       }
-      return new Date(`${yyyy}-${mm}-${dd}`);
+
+      // Create date, note that the month is 0-indexed in JavaScript's Date constructor.
+      return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
     }
-    return new Date(dateStr);
+    
+    // Fallback for ISO date strings or other formats recognized by new Date()
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      return d;
+    }
+
+    // Return a default date for invalid formats
+    return new Date('1970-01-01');
   }
 
   // Filtered and searched rows (already present as filteredRows)
