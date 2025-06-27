@@ -183,15 +183,18 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
     setSaveError(null);
     try {
       // Remove 'Serial No' column from header and all rows (case-insensitive, trims whitespace)
-      const baseHeader = data[headerRow];
-      const serialIdx = baseHeader.findIndex(h => h.trim().toLowerCase() === 'serial no' || h.trim().toLowerCase() === 'sl. no.' || h.trim().toLowerCase() === 'sl. no' || h.trim().toLowerCase() === 's.no' || h.trim().toLowerCase() === 's. no');
-      let filteredHeader = baseHeader;
-      let filteredRows = data.slice(startRow, endRow + 1);
-      if (serialIdx !== -1) {
-        filteredHeader = baseHeader.filter((_, i) => i !== serialIdx);
-        filteredRows = filteredRows.map(row => row.filter((_, i) => i !== serialIdx));
-      }
+      // const baseHeader = data[headerRow];
+      // const serialIdx = baseHeader.findIndex(h => h.trim().toLowerCase() === 'serial no' || h.trim().toLowerCase() === 'sl. no.' || h.trim().toLowerCase() === 'sl. no' || h.trim().toLowerCase() === 's.no' || h.trim().toLowerCase() === 's. no');
+      // let filteredHeader = baseHeader;
+      // let filteredRows = data.slice(startRow, endRow + 1);
+      // if (serialIdx !== -1) {
+      //   filteredHeader = baseHeader.filter((_, i) => i !== serialIdx);
+      //   filteredRows = filteredRows.map(row => row.filter((_, i) => i !== serialIdx));
+      // }
       // Add columns for accountId, accountName, bankId, bankName
+      const baseHeader = data[headerRow];
+      const filteredHeader = baseHeader;
+      const filteredRows = data.slice(startRow, endRow + 1);
       const extraCols = ["accountId", "accountName", "bankId", "bankName"];
       const header = [...filteredHeader, ...extraCols];
       const rows = filteredRows.map(row => [...row, accountId, accountName, bankId, bankName]);
@@ -215,6 +218,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
           endRow,
           headerRow,
           fileName: fileName || '',
+          s3FileUrl: s3FileUrl || '',
           userId: localStorage.getItem("userId") || "",
           bankName,
           accountName,

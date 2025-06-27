@@ -11,6 +11,7 @@ import TaggingControls from '../../components/TaggingControls';
 import AnalyticsSummary from '../../components/AnalyticsSummary';
 import TransactionFilterBar from '../../components/TransactionFilterBar';
 import TagFilterPills from '../../components/TagFilterPills';
+import React from 'react';
 
 interface Statement {
   id: string;
@@ -76,6 +77,12 @@ function StatementsContent() {
   const [searchField, setSearchField] = useState('all');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
+  // Advanced tag creation features - ADDED
+  const [selection, setSelection] = useState<{ text: string; x: number; y: number; rowIdx?: number } | null>(null);
+  const [tagCreateMsg, setTagCreateMsg] = useState<string | null>(null);
+  const [pendingTag, setPendingTag] = useState<{ tagName: string; rowIdx: number; selectionText: string } | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const fetchStatements = async () => {
       if (!accountId) return;
@@ -124,10 +131,152 @@ function StatementsContent() {
   }, [bankId, accountId]);
 
   useEffect(() => {
-    fetch('/api/tags')
+    const userId = localStorage.getItem('userId');
+    fetch('/api/tags?userId=' + userId)
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setAllTags(data); else setAllTags([]); });
   }, []);
+
+  // Advanced tag creation: Text selection detection - ADDED
+  useEffect(() => {
+    const handleMouseUp = () => {
+      const sel = window.getSelection();
+      if (sel && sel.toString().trim() && tableRef.current && tableRef.current.contains(sel.anchorNode)) {
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        const containerRect = tableRef.current.getBoundingClientRect();
+        // Try to find the row index
+        let rowIdx: number | undefined = undefined;
+        let node = sel.anchorNode as HTMLElement | null;
+        while (node && node !== tableRef.current) {
+          if (node instanceof HTMLTableRowElement && node.hasAttribute('data-row-idx')) {
+            rowIdx = parseInt(node.getAttribute('data-row-idx') || '', 10);
+            break;
+          }
+          node = node.parentElement;
+        }
+        setSelection({
+          text: sel.toString().trim(),
+          x: rect.left - containerRect.left,
+          y: rect.bottom - containerRect.top,
+          rowIdx,
+        });
+      } else {
+        setSelection(null);
+      }
+    };
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
+  }, []);
+
+  // Advanced tag creation: Create tag from selection - ADDED
+  const handleCreateTagFromSelection = async () => {
+    if (!selection?.text) return;
+    setTagCreateMsg(null);
+    try {
+      const userId = localStorage.getItem('userId');
+      const res = await fetch("/api/tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: selection.text, userId }),
+      });
+      if (!res.ok) throw new Error("Failed to create tag");
+      setTagCreateMsg("Tag created!");
+      setPendingTag(selection.rowIdx !== undefined ? { 
+        tagName: selection.text, 
+        rowIdx: selection.rowIdx, 
+        selectionText: selection.text 
+      } : null);
+      setSelection(null);
+      // Refresh tags
+      const tagsRes = await fetch('/api/tags?userId=' + userId);
+      const tags = await tagsRes.json();
+      setAllTags(Array.isArray(tags) ? tags : []);
+    } catch {
+      setTagCreateMsg("Failed to create tag");
+      setTimeout(() => setTagCreateMsg(null), 1500);
+    }
+  };
+
+  // Advanced tag creation: Apply tag to only this transaction row - ADDED
+  const handleApplyTagToRow = async () => {
+    if (!pendingTag) return;
+    const { tagName, rowIdx } = pendingTag;
+    const tagObj = allTags.find(t => t.name === tagName);
+    if (!tagObj) return setPendingTag(null);
+    const row = filteredTransactions[rowIdx];
+    if (!row || !row.id) return setPendingTag(null);
+    const tx = transactions.find(t => t.id === row.id);
+    if (!tx) return setPendingTag(null);
+    const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
+    if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
+    await fetch('/api/transaction/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: tx.id, tags })
+    });
+    setPendingTag(null);
+    setTagCreateMsg("Tag applied to transaction!");
+    setTimeout(() => setTagCreateMsg(null), 1500);
+    // Refresh transactions
+    setLoadingTransactions(true);
+    const userId = localStorage.getItem("userId") || "";
+    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setTransactions(data);
+        else setTransactionsError(data.error || 'Failed to fetch transactions');
+      })
+      .catch(() => setTransactionsError('Failed to fetch transactions'))
+      .finally(() => setLoadingTransactions(false));
+  };
+
+  // Advanced tag creation: Apply tag to all transactions where selection text is present - ADDED
+  const handleApplyTagToAll = async () => {
+    if (!pendingTag) return;
+    const { tagName, selectionText } = pendingTag;
+    const tagObj = allTags.find(t => t.name === tagName);
+    if (!tagObj) return setPendingTag(null);
+    await Promise.all(transactions.map(async (tx) => {
+      // Check all primitive fields except arrays/objects and 'tags' for case-sensitive match
+      const hasMatch = Object.entries(tx).some(([key, val]) =>
+        key !== 'tags' &&
+        ((typeof val === 'string' && val.includes(selectionText)) ||
+         (typeof val === 'number' && String(val).includes(selectionText)))
+      );
+      if (hasMatch) {
+        const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
+        if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
+        await fetch('/api/transaction/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transactionId: tx.id, tags })
+        });
+      }
+    }));
+    setPendingTag(null);
+    setTagCreateMsg("Tag applied to all matching transactions!");
+    setTimeout(() => setTagCreateMsg(null), 1500);
+    // Refresh transactions
+    setLoadingTransactions(true);
+    const userId = localStorage.getItem("userId") || "";
+    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setTransactions(data);
+        else setTransactionsError(data.error || 'Failed to fetch transactions');
+      })
+      .catch(() => setTransactionsError('Failed to fetch transactions'))
+      .finally(() => setLoadingTransactions(false));
+  };
+
+  // Auto-clear tagCreateMsg after 2 seconds - ADDED
+  useEffect(() => {
+    if (tagCreateMsg) {
+      const timeout = setTimeout(() => setTagCreateMsg(null), 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [tagCreateMsg]);
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,7 +344,7 @@ function StatementsContent() {
 
   const handleSelectAll = () => {
     if (selectAll) setSelectedRows(new Set());
-    else setSelectedRows(new Set(transactions.map(tx => tx.id)));
+    else setSelectedRows(new Set(filteredTransactions.map(tx => tx.id)));
     setSelectAll(!selectAll);
   };
 
@@ -308,17 +457,82 @@ function StatementsContent() {
     setTransactionHeaders(newHeaders);
   };
 
+  // Compute tag counts for filtered transactions
+  const tagStats = React.useMemo(() => {
+    const stats: Record<string, number> = {};
+    for (const tx of filteredTransactions) {
+      if (Array.isArray(tx.tags)) {
+        for (const tag of tx.tags) {
+          if (tag && typeof tag.name === 'string') {
+            stats[tag.name] = (stats[tag.name] || 0) + 1;
+          }
+        }
+      }
+    }
+    return stats;
+  }, [filteredTransactions]);
+
+  // Handler to remove a tag from a transaction
+  const handleRemoveTag = async (rowIdx: number, tagId: string) => {
+    const tx = sortedAndFilteredTransactions[rowIdx];
+    if (!tx || !tx.id) return;
+    
+    // Find the tag name for the confirmation message
+    const tagToRemove = Array.isArray(tx.tags) ? tx.tags.find(t => t.id === tagId) : null;
+    const tagName = tagToRemove?.name || 'this tag';
+    
+    // Show confirmation dialog
+    const confirmed = window.confirm(`Are you sure you want to remove the tag "${tagName}" from this transaction?`);
+    if (!confirmed) return;
+    
+    const tags = Array.isArray(tx.tags) ? tx.tags.filter((t) => t.id !== tagId) : [];
+    await fetch('/api/transaction/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: tx.id, tags })
+    });
+    setTagCreateMsg('Tag removed!');
+    setTimeout(() => setTagCreateMsg(null), 1500);
+    setLoadingTransactions(true);
+    const userId = localStorage.getItem("userId") || "";
+    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setTransactions(data);
+        else setTransactionsError(data.error || 'Failed to fetch transactions');
+      })
+      .catch(() => setTransactionsError('Failed to fetch transactions'))
+      .finally(() => setLoadingTransactions(false));
+  };
+
+  useEffect(() => {
+    // Fetch and set the header order from the bank/account when transactions tab is active
+    if (tab === 'transactions' && bankName) {
+      fetch(`/api/bank-header?bankName=${encodeURIComponent(bankName)}`)
+        .then(res => res.json())
+        .then(data => {
+          let headerOrder = Array.isArray(data.header) ? data.header : [];
+          // Find all keys in filtered transactions
+          const allKeys = Array.from(new Set(filteredTransactions.flatMap(tx => Object.keys(tx)))).filter(key => key !== 'id' && key !== 'transactionData');
+          // Append any extra fields not in the header
+          const extraFields = allKeys.filter(k => !headerOrder.includes(k));
+          setTransactionHeaders([...headerOrder, ...extraFields]);
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, bankName, filteredTransactions.length]);
+
   return (
     <div className="min-h-screen py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
       {/* Breadcrumb Navigation */}
       <nav className="text-sm mb-4 flex items-center gap-2 text-gray-600">
-        <Link href="/" className="hover:underline">Home</Link>
+        <span>Home</span>
         <span>/</span>
-        <Link href="/pages/banks" className="hover:underline">Banks</Link>
+        <span>Banks</span>
         <span>/</span>
-        <Link href={`/pages/accounts?bankId=${bankId}`} className="hover:underline">{bankName || 'Bank'}</Link>
+        <span>{bankName || 'Bank'}</span>
         <span>/</span>
-        <Link href={`/pages/statements?bankId=${bankId}&accountId=${accountId}`} className="hover:underline">{accountName || 'Account'}</Link>
+        <span>{accountName || 'Account'}</span>
         <span>/</span>
         <span className="font-semibold text-blue-700">Files</span>
       </nav>
@@ -490,6 +704,7 @@ function StatementsContent() {
                 );
               }}
               onClear={() => setTagFilters([])}
+              tagStats={tagStats}
             />
 
             {/* Tagging Controls */}
@@ -542,29 +757,70 @@ function StatementsContent() {
               })()
             )}
 
-            {/* Transaction Table */}
+            {/* Transaction Table with Advanced Tag Creation Features - ADDED */}
             {tab === 'transactions' && (
-              <TransactionTable
-                rows={sortedAndFilteredTransactions.map(tx => {
-                  // Remove transactionData property without referencing it directly
-                  const filtered = Object.fromEntries(Object.entries(tx).filter(([key]) => key !== 'transactionData'));
-                  return {
-                    ...filtered,
-                    tags: tx.tags || []
-                  };
-                })}
-                headers={transactionHeaders}
-                selectedRows={new Set(sortedAndFilteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
-                onRowSelect={idx => {
-                  const tx = sortedAndFilteredTransactions[idx];
-                  if (tx) handleRowSelect(tx.id);
-                }}
-                onSelectAll={handleSelectAll}
-                selectAll={selectAll}
-                loading={loadingTransactions}
-                error={transactionsError}
-                onReorderHeaders={handleReorderHeaders}
-              />
+              <div ref={tableRef} className="overflow-x-auto relative">
+                {/* Floating create tag button - ADDED */}
+                {selection && (
+                  <button
+                    style={{ position: 'absolute', left: selection.x, top: selection.y + 8, zIndex: 1000 }}
+                    className="px-3 py-1 bg-blue-600 text-white rounded shadow font-semibold text-xs hover:bg-blue-700 transition-all"
+                    onClick={handleCreateTagFromSelection}
+                  >
+                    + Create Tag from Selection
+                  </button>
+                )}
+                
+                {/* Prompt to apply tag to transaction - ADDED */}
+                {pendingTag && (
+                  <div style={{ 
+                    position: 'absolute', 
+                    left: selection?.x, 
+                    top: selection?.y !== undefined ? selection.y + 8 : 48, 
+                    zIndex: 1001 
+                  }} className="bg-white border border-blue-200 rounded shadow-lg px-3 sm:px-4 py-2 sm:py-3 flex flex-col gap-2 sm:gap-3 items-center">
+                    <span className="text-sm">Apply tag "{pendingTag.tagName}" to:</span>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button className="px-3 py-1 bg-green-600 text-white rounded font-semibold text-xs hover:bg-green-700" 
+                              onClick={handleApplyTagToRow}>Only this transaction</button>
+                      <button className="px-3 py-1 bg-blue-600 text-white rounded font-semibold text-xs hover:bg-blue-700" 
+                              onClick={handleApplyTagToAll}>All transactions with this text</button>
+                      <button className="px-3 py-1 bg-gray-200 text-gray-700 rounded font-semibold text-xs hover:bg-gray-300" 
+                              onClick={() => setPendingTag(null)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Success message - ADDED */}
+                {tagCreateMsg && (
+                  <div className="absolute left-1/2 top-2 -translate-x-1/2 bg-green-100 text-green-800 px-3 sm:px-4 py-2 rounded shadow text-xs sm:text-sm z-50">
+                    {tagCreateMsg}
+                  </div>
+                )}
+                
+                <TransactionTable
+                  rows={sortedAndFilteredTransactions.map(tx => {
+                    // Remove transactionData property without referencing it directly
+                    const filtered = Object.fromEntries(Object.entries(tx).filter(([key]) => key !== 'transactionData'));
+                    return {
+                      ...filtered,
+                      tags: tx.tags || []
+                    };
+                  })}
+                  headers={transactionHeaders}
+                  selectedRows={new Set(sortedAndFilteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
+                  onRowSelect={idx => {
+                    const tx = sortedAndFilteredTransactions[idx];
+                    if (tx) handleRowSelect(tx.id);
+                  }}
+                  onSelectAll={handleSelectAll}
+                  selectAll={selectAll}
+                  loading={loadingTransactions}
+                  error={transactionsError}
+                  onReorderHeaders={handleReorderHeaders}
+                  onRemoveTag={handleRemoveTag}
+                />
+              </div>
             )}
           </div>
         )}
@@ -576,6 +832,7 @@ function StatementsContent() {
         statementId={previewStatementId}
         bankId={bankId}
         accountId={accountId}
+        fileName={statements.find(s => s.id === previewStatementId)?.fileName || ''}
       />
     </div>
   );

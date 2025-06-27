@@ -71,6 +71,18 @@ export default function SuperBankPage() {
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
+  // Drag-and-drop state for header editing
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  // Helper to reorder array
+  const reorder = (arr: string[], from: number, to: number) => {
+    const updated = [...arr];
+    const [removed] = updated.splice(from, 1);
+    updated.splice(to, 0, removed);
+    return updated;
+  };
+
   // Fetch all transactions
   useEffect(() => {
     setLoading(true);
@@ -125,7 +137,8 @@ export default function SuperBankPage() {
 
   // Fetch all tags
   useEffect(() => {
-    fetch('/api/tags')
+    const userId = localStorage.getItem('userId');
+    fetch('/api/tags?userId=' + userId)
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setAllTags(data); else setAllTags([]); });
   }, []);
@@ -274,6 +287,30 @@ export default function SuperBankPage() {
       .finally(() => setLoading(false));
   };
 
+  // Helper to normalize date to dd/mm/yyyy
+  function normalizeDateToDDMMYYYY(dateStr: string): string {
+    if (!dateStr) return '';
+    // Match dd/mm/yyyy, dd-mm-yyyy, dd/mm/yy, dd-mm-yy
+    const match = dateStr.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+    if (match) {
+      let [_, dd, mm, yyyy] = match;
+      if (yyyy.length === 2) yyyy = '20' + yyyy;
+      // Pad day and month
+      if (dd.length === 1) dd = '0' + dd;
+      if (mm.length === 1) mm = '0' + mm;
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    // Try ISO or fallback
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    return dateStr;
+  }
+
   // Flatten all transaction rows for rendering
   const mappedRows: TransactionRow[] = transactions.map((tx) => {
     const mapping = bankMappings[tx.bankId]?.mapping || {};
@@ -293,6 +330,11 @@ export default function SuperBankPage() {
           : [];
         mappedRow['Tags'] = tags;
         mappedRow['tags'] = tags;
+      } else if (sh.toLowerCase() === 'date') {
+        // Normalize date
+        const bankHeader = reverseMap[sh];
+        const value = bankHeader ? tx[bankHeader] : tx[sh];
+        mappedRow[sh] = typeof value === 'string' ? normalizeDateToDDMMYYYY(value) : value;
       } else {
         const bankHeader = reverseMap[sh];
         const value = bankHeader ? tx[bankHeader] : tx[sh];
@@ -530,13 +572,21 @@ export default function SuperBankPage() {
     }
   };
 
-  // Remove a tag from a transaction, with confirmation
+  // Handler to remove a tag from a transaction
   const handleRemoveTag = async (rowIdx: number, tagId: string) => {
-    if (!window.confirm('Are you sure you want to remove this tag?')) return;
-    const row = filteredRows[rowIdx];
+    const row = sortedAndFilteredRows[rowIdx];
     if (!row || !row.id) return;
     const tx = transactions.find(t => t.id === row.id);
     if (!tx) return;
+    
+    // Find the tag name for the confirmation message
+    const tagToRemove = Array.isArray(tx.tags) ? tx.tags.find(t => t.id === tagId) : null;
+    const tagName = tagToRemove?.name || 'this tag';
+    
+    // Show confirmation dialog
+    const confirmed = window.confirm(`Are you sure you want to remove the tag "${tagName}" from this transaction?`);
+    if (!confirmed) return;
+    
     const tags = Array.isArray(tx.tags) ? tx.tags.filter((t) => t.id !== tagId) : [];
     await fetch('/api/transaction/update', {
       method: 'POST',
@@ -561,23 +611,67 @@ export default function SuperBankPage() {
   const amountCol = superHeader.find(h => h.toLowerCase().includes('amount'));
   const totalAmount = filteredRows.reduce((sum, row) => {
     const tx = transactions.find(t => t.id === row.id);
-    if (!tx) return sum;
-    const { amount } = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
-    return sum + (typeof amount === 'number' && !isNaN(amount) ? amount : 0);
+    let amount: number | undefined = undefined;
+    if (tx) {
+      // Try conditions first
+      const condResult = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
+      if (typeof condResult.amount === 'number' && !isNaN(condResult.amount)) {
+        amount = condResult.amount;
+      }
+    }
+    // Fallback: try to parse from Amount column if not found
+    if (amount === undefined || isNaN(amount)) {
+      if (amountCol && row[amountCol] !== undefined && row[amountCol] !== null) {
+        let raw = String(row[amountCol]).replace(/,/g, '');
+        // Handle scientific notation
+        if (/e\+?\d+/i.test(raw)) {
+          amount = Number(raw);
+        } else {
+          amount = parseFloat(raw);
+        }
+        if (isNaN(amount)) amount = 0;
+      } else {
+        amount = 0;
+      }
+    }
+    return sum + amount;
   }, 0).toLocaleString();
+
+  // Find the CR/DR column (case-insensitive, ignore punctuation and spaces, match both 'crdr' and 'drcr')
+  const crDrCol = superHeader.find(h => {
+    const norm = h.toLowerCase().replace(/[^a-z]/g, '');
+    return norm === 'crdr' || norm === 'drcr';
+  });
 
   // Calculate DR/CR totals for filteredRows
   let totalCredit = 0, totalDebit = 0;
   filteredRows.forEach(row => {
     const tx = transactions.find(t => t.id === row.id);
-    if (!tx) return;
-    const { amount, type } = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
-    if (typeof amount === 'number' && !isNaN(amount)) {
-      if (type === 'CR') totalCredit += Math.abs(amount);
-      else if (type === 'DR') totalDebit += Math.abs(amount);
-      else if (amount > 0) totalCredit += amount;
-      else if (amount < 0) totalDebit += Math.abs(amount);
+    let amount: number | undefined = undefined;
+    if (tx) {
+      const condResult = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
+      if (typeof condResult.amount === 'number' && !isNaN(condResult.amount)) {
+        amount = condResult.amount;
+      }
     }
+    if (amount === undefined || isNaN(amount)) {
+      if (amountCol && row[amountCol] !== undefined && row[amountCol] !== null) {
+        let raw = String(row[amountCol]).replace(/,/g, '');
+        if (/e\+?\d+/i.test(raw)) {
+          amount = Number(raw);
+        } else {
+          amount = parseFloat(raw);
+        }
+        if (isNaN(amount)) amount = 0;
+      } else {
+        amount = 0;
+      }
+    }
+    // Use CR/DR column if present
+    let crdr = crDrCol && row[crDrCol] ? String(row[crDrCol]).trim().toUpperCase() : '';
+    if (crdr === 'CR') totalCredit += Math.abs(amount);
+    else if (crdr === 'DR') totalDebit += Math.abs(amount);
+    // If CR/DR column is missing or empty, ignore for credit/debit totals
   });
   const totalCreditStr = totalCredit ? totalCredit.toLocaleString() : undefined;
   const totalDebitStr = totalDebit ? totalDebit.toLocaleString() : undefined;
@@ -833,7 +927,29 @@ export default function SuperBankPage() {
                 <label className="block text-xs font-medium text-blue-700 mb-1">Edit Header Columns</label>
                 <div className="flex flex-wrap gap-2 sm:gap-3 items-center bg-white/70 p-2 sm:p-3 rounded border border-blue-100 shadow-sm">
                   {headerInputs.map((header, idx) => (
-                    <div key={idx} className="relative group flex-1 min-w-[120px]">
+                    <div
+                      key={idx}
+                      className={`relative group flex-1 min-w-[120px] ${dragOverIdx === idx ? 'ring-2 ring-blue-400' : ''}`}
+                      draggable
+                      onDragStart={() => setDraggedIdx(idx)}
+                      onDragOver={e => {
+                        e.preventDefault();
+                        setDragOverIdx(idx);
+                      }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        if (draggedIdx !== null) {
+                          const newOrder = reorder(headerInputs, draggedIdx, idx);
+                          setHeaderInputs(newOrder);
+                        }
+                        setDraggedIdx(null);
+                        setDragOverIdx(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedIdx(null);
+                        setDragOverIdx(null);
+                      }}
+                    >
                       <input
                         type="text"
                         value={header}
@@ -892,17 +1008,15 @@ export default function SuperBankPage() {
         {/* Analytics summary above controls */}
         {filteredRows.length > 0 && (
           <AnalyticsSummary
-            totalTransactions={filteredRows.length}
             totalAmount={totalAmount}
-            totalCredit={totalCreditStr}
-            totalDebit={totalDebitStr}
+            totalCredit={totalCredit}
+            totalDebit={totalDebit}
+            totalTransactions={filteredRows.length}
             totalBanks={totalBanks}
             totalAccounts={totalAccounts}
+            totalTags={filteredTotalTags}
             tagged={tagged}
             untagged={untagged}
-            totalTags={filteredTotalTags}
-            showAmount={!!amountCol}
-            showTagStats={superHeader.some(h => h.toLowerCase() === 'tags')}
           />
         )}
         {/* Filter box below stats, wider on PC */}
