@@ -179,118 +179,141 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       </div>
       {/* Table with bottom scrollbar */}
       <div ref={tableScrollRef} style={{ overflowX: 'auto' }}>
-        {loading ? (
-          <div className="text-gray-500 text-sm">Loading transactions...</div>
-        ) : error ? (
-          <div className="text-red-600 text-sm">{error}</div>
-        ) : rows.length === 0 ? (
-          <div className="text-gray-500 text-sm">No mapped transactions found.</div>
-        ) : (
-          <table className="min-w-full border text-xs sm:text-sm bg-white/80 rounded-xl shadow" style={{ tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: 40 }} />
-              <col style={{ width: 40 }} />
-              {headers.map(h => (
-                <col key={h} style={{ width: columnWidths[h] || DEFAULT_WIDTH }} />
-              ))}
-            </colgroup>
-            <thead>
-              <tr>
-                <th className="border px-2 py-1 bg-gray-100" style={{ width: 40 }}>
-                  <input type="checkbox" checked={selectAll} onChange={onSelectAll} />
+      {loading ? (
+        <div className="text-gray-500 text-sm">Loading transactions...</div>
+      ) : error ? (
+        <div className="text-red-600 text-sm">{error}</div>
+      ) : rows.length === 0 ? (
+        <div className="text-gray-500 text-sm">No mapped transactions found.</div>
+      ) : (
+        <table className="min-w-full border text-xs sm:text-sm bg-white/80 rounded-xl shadow" style={{ tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: 40 }} />
+            <col style={{ width: 40 }} />
+            {headers.map(h => (
+              <col key={h} style={{ width: columnWidths[h] || DEFAULT_WIDTH }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              <th className="border px-2 py-1 bg-gray-100" style={{ width: 40 }}>
+                <input type="checkbox" checked={selectAll} onChange={onSelectAll} />
+              </th>
+              <th className="border px-2 py-1 font-bold bg-gray-100" style={{ width: 40 }}>#</th>
+              {headers.map((sh) => (
+                <th
+                  key={sh}
+                  className="border px-2 py-1 font-bold bg-gray-100 group relative select-none whitespace-nowrap overflow-hidden text-ellipsis"
+                  style={{ width: columnWidths[sh] || DEFAULT_WIDTH, minWidth: 60, maxWidth: columnWidths[sh] || DEFAULT_WIDTH }}
+                  draggable
+                  onDragStart={() => handleDragStart(sh)}
+                  onDragOver={handleDragOver}
+                  onDrop={e => handleDrop(e, sh)}
+                  onDragEnd={handleDragEnd}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="truncate block w-full">{sh}</span>
+                    <span
+                      className="absolute right-0 top-0 h-full w-2 cursor-col-resize z-10 group-hover:bg-blue-100"
+                      onMouseDown={e => handleMouseDown(e, sh)}
+                      style={{ userSelect: 'none' }}
+                    >
+                      <span className="block h-full w-1 mx-auto bg-gray-400 rounded" style={{ opacity: 0.6 }}></span>
+                    </span>
+                  </div>
                 </th>
-                <th className="border px-2 py-1 font-bold bg-gray-100" style={{ width: 40 }}>#</th>
-                {headers.map((sh) => (
-                  <th
-                    key={sh}
-                    className="border px-2 py-1 font-bold bg-gray-100 group relative select-none whitespace-nowrap overflow-hidden text-ellipsis"
-                    style={{ width: columnWidths[sh] || DEFAULT_WIDTH, minWidth: 60, maxWidth: columnWidths[sh] || DEFAULT_WIDTH }}
-                    draggable
-                    onDragStart={() => handleDragStart(sh)}
-                    onDragOver={handleDragOver}
-                    onDrop={e => handleDrop(e, sh)}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="truncate block w-full">{sh}</span>
-                      <span
-                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize z-10 group-hover:bg-blue-100"
-                        onMouseDown={e => handleMouseDown(e, sh)}
-                        style={{ userSelect: 'none' }}
-                      >
-                        <span className="block h-full w-1 mx-auto bg-gray-400 rounded" style={{ opacity: 0.6 }}></span>
-                      </span>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, idx) => {
-                const tx = transactions?.find(t => t.id === row.id);
-                return (
-                  <tr key={idx} data-row-idx={idx}>
-                    <td className="border px-2 py-1 text-center" style={{ width: 40 }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedRows.has(idx)}
-                        onChange={() => onRowSelect(idx)}
-                      />
-                    </td>
-                    <td className="border px-2 py-1 text-center" style={{ width: 40 }}>{idx + 1}</td>
-                    {headers.map((sh) => (
-                      <td key={sh} className="border px-2 py-1 whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: columnWidths[sh] || DEFAULT_WIDTH, minWidth: 60, maxWidth: columnWidths[sh] || DEFAULT_WIDTH }}>
-                        {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
-                          <div className="flex gap-1">
-                            {(row[sh] as Tag[]).map((tag, tagIdx: number) => (
-                              <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] group" style={{ background: tag.color, color: '#222' }}>
-                                <RiPriceTag3Line className="inline mr-1" />{tag.name}
-                                {onRemoveTag && (
-                                  <button
-                                    type="button"
-                                    className="ml-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity font-bold focus:outline-none"
-                                    title="Remove tag"
-                                    onClick={e => { e.stopPropagation(); onRemoveTag(idx, tag.id); }}
-                                  >
-                                    ×
-                                  </button>
-                                )}
-                              </span>
-                            ))}
-                          </div>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, idx) => {
+              const tx = transactions?.find(t => t.id === row.id);
+              return (
+                <tr key={idx} data-row-idx={idx}>
+                  <td className="border px-2 py-1 text-center" style={{ width: 40 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedRows.has(idx)}
+                      onChange={() => onRowSelect(idx)}
+                    />
+                  </td>
+                  <td className="border px-2 py-1 text-center" style={{ width: 40 }}>{idx + 1}</td>
+                  {headers.map((sh) => (
+                    <td key={sh} className="border px-2 py-1 whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: columnWidths[sh] || DEFAULT_WIDTH, minWidth: 60, maxWidth: columnWidths[sh] || DEFAULT_WIDTH }}>
+                      {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
+                        <div className="flex gap-1">
+                          {(row[sh] as Tag[]).map((tag, tagIdx: number) => (
+                            <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] group" style={{ background: tag.color, color: '#222' }}>
+                              <RiPriceTag3Line className="inline mr-1" />{tag.name}
+                              {onRemoveTag && (
+                                <button
+                                  type="button"
+                                  className="ml-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity font-bold focus:outline-none"
+                                  title="Remove tag"
+                                  onClick={e => { e.stopPropagation(); onRemoveTag(idx, tag.id); }}
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                        ) : sh.replace(/[^a-z]/gi, '').toLowerCase() === 'amount' ? (
+                          (() => {
+                            let val: string | number | undefined = undefined;
+                            if (getValueForColumn && tx) {
+                              const v = getValueForColumn(tx, tx.bankId, sh);
+                              if (typeof v === 'string' || typeof v === 'number') {
+                                val = v;
+                              }
+                            }
+                            if (val === undefined || val === null || val === '') {
+                              const v = row[sh];
+                              if (typeof v === 'string' || typeof v === 'number') {
+                                val = v;
+                              }
+                            }
+                            if (typeof val === 'number' && !isNaN(val)) {
+                              return val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            } else if (typeof val === 'string' && val.trim() !== '' && !isNaN(Number(val.replace(/,/g, '')))) {
+                              return Number(val.replace(/,/g, '')).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            } else {
+                              return val !== undefined && val !== null ? String(val) : '';
+                            }
+                          })()
                         ) : sh.toLowerCase() === 'date' ? (
                           (() => {
                             const val = row[sh];
                             if (typeof val === 'string') return normalizeDateToDDMMYYYY(val);
                             return val !== undefined && val !== null ? String(val) : '';
                           })()
-                        ) : getValueForColumn && tx ? (
-                          (() => {
-                            const val = getValueForColumn(tx, tx.bankId, sh);
-                            if (val !== undefined && val !== null && val !== "") return String(val);
-                            const rowValue = row[sh];
-                            if (typeof rowValue === 'object' && rowValue !== null && 'name' in rowValue && 'id' in rowValue) {
-                              return String((rowValue as unknown as Tag).name);
-                            }
-                            return rowValue !== undefined && rowValue !== null ? String(rowValue) : '';
-                          })()
-                        ) : (
-                          (() => {
-                            const rowValue = row[sh];
-                            if (typeof rowValue === 'object' && rowValue !== null && 'name' in rowValue && 'id' in rowValue) {
-                              return String((rowValue as unknown as Tag).name);
-                            }
-                            return rowValue !== undefined && rowValue !== null ? String(rowValue) : '';
-                          })()
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+                      ) : getValueForColumn && tx ? (
+                        (() => {
+                          const val = getValueForColumn(tx, tx.bankId, sh);
+                          if (val !== undefined && val !== null && val !== "") return String(val);
+                          const rowValue = row[sh];
+                          if (typeof rowValue === 'object' && rowValue !== null && 'name' in rowValue && 'id' in rowValue) {
+                            return String((rowValue as unknown as Tag).name);
+                          }
+                          return rowValue !== undefined && rowValue !== null ? String(rowValue) : '';
+                        })()
+                      ) : (
+                        (() => {
+                          const rowValue = row[sh];
+                          if (typeof rowValue === 'object' && rowValue !== null && 'name' in rowValue && 'id' in rowValue) {
+                            return String((rowValue as unknown as Tag).name);
+                          }
+                          return rowValue !== undefined && rowValue !== null ? String(rowValue) : '';
+                        })()
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
       </div>
     </div>
   );

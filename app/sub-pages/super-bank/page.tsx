@@ -608,7 +608,8 @@ export default function SuperBankPage() {
 
   // Filtered and searched rows (already present as filteredRows)
   // Summary stats for AnalyticsSummary
-  const amountCol = superHeader.find(h => h.toLowerCase().includes('amount'));
+  const amountCol = superHeader.find(h => h.trim().toLowerCase() === 'amount');
+  console.log('amountCol:', amountCol);
   const totalAmount = filteredRows.reduce((sum, row) => {
     const tx = transactions.find(t => t.id === row.id);
     let amount: number | undefined = undefined;
@@ -622,18 +623,19 @@ export default function SuperBankPage() {
     // Fallback: try to parse from Amount column if not found
     if (amount === undefined || isNaN(amount)) {
       if (amountCol && row[amountCol] !== undefined && row[amountCol] !== null) {
-        let raw = String(row[amountCol]).replace(/,/g, '');
-        // Handle scientific notation
-        if (/e\+?\d+/i.test(raw)) {
-          amount = Number(raw);
+        const val = row[amountCol];
+        if (typeof val === 'string' || typeof val === 'number') {
+          amount = parseIndianNumber(val);
+          if (isNaN(amount)) amount = 0;
         } else {
-          amount = parseFloat(raw);
+          amount = 0;
         }
-        if (isNaN(amount)) amount = 0;
       } else {
         amount = 0;
       }
     }
+    // Debug log for each row's amount value
+    console.log('row[amountCol]:', amountCol ? row[amountCol] : 'undefined', 'amountCol:', amountCol, 'row:', row);
     return sum + amount;
   }, 0).toLocaleString();
 
@@ -643,38 +645,81 @@ export default function SuperBankPage() {
     return norm === 'crdr' || norm === 'drcr';
   });
 
+  // Helper to parse Indian-style numbers (e.g., 11,11,111.00)
+  function parseIndianNumber(val: string | number | undefined | null): number {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+      // Remove all commas, then parse
+      const cleaned = val.replace(/,/g, '');
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? 0 : num;
+    }
+    return 0;
+  }
+
   // Calculate DR/CR totals for filteredRows
-  let totalCredit = 0, totalDebit = 0;
+  let totalCredit = 0;
+  let totalDebit = 0;
   filteredRows.forEach(row => {
     const tx = transactions.find(t => t.id === row.id);
     let amount: number | undefined = undefined;
+    let crdr = '';
+    
     if (tx) {
       const condResult = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
       if (typeof condResult.amount === 'number' && !isNaN(condResult.amount)) {
         amount = condResult.amount;
       }
+      // Check if conditions set a CR/DR value
+      if (condResult.type) {
+        crdr = String(condResult.type).trim().toUpperCase();
+      }
     }
+    
     if (amount === undefined || isNaN(amount)) {
       if (amountCol && row[amountCol] !== undefined && row[amountCol] !== null) {
-        let raw = String(row[amountCol]).replace(/,/g, '');
-        if (/e\+?\d+/i.test(raw)) {
-          amount = Number(raw);
+        const val = row[amountCol];
+        if (typeof val === 'string' || typeof val === 'number') {
+          amount = parseIndianNumber(val);
+          if (!Number.isFinite(amount)) amount = 0;
         } else {
-          amount = parseFloat(raw);
+          amount = 0;
         }
-        if (isNaN(amount)) amount = 0;
       } else {
         amount = 0;
       }
     }
-    // Use CR/DR column if present
-    let crdr = crDrCol && row[crDrCol] ? String(row[crDrCol]).trim().toUpperCase() : '';
-    if (crdr === 'CR') totalCredit += Math.abs(amount);
-    else if (crdr === 'DR') totalDebit += Math.abs(amount);
+    
+    // Use CR/DR from conditions first, then fall back to column if present
+    if (!crdr && crDrCol && row[crDrCol]) {
+      crdr = String(row[crDrCol]).trim().toUpperCase();
+    }
+    
+    // Also try to get CR/DR from conditions using getValueForColumn
+    if (!crdr && tx) {
+      const crdrFromConditions = getValueForColumn(row as unknown as TransactionRow, tx.bankId, 'Dr./Cr.');
+      if (crdrFromConditions) {
+        crdr = String(crdrFromConditions).trim().toUpperCase();
+      }
+    }
+    
+    if (crdr === 'CR') {
+      if (!Number.isFinite(amount)) amount = 0;
+      totalCredit += Math.abs(amount);
+    } else if (crdr === 'DR') {
+      if (!Number.isFinite(amount)) amount = 0;
+      totalDebit += Math.abs(amount);
+    }
     // If CR/DR column is missing or empty, ignore for credit/debit totals
   });
-  const totalCreditStr = totalCredit ? totalCredit.toLocaleString() : undefined;
-  const totalDebitStr = totalDebit ? totalDebit.toLocaleString() : undefined;
+  // Debug log
+  console.log('totalCredit:', totalCredit, 'totalDebit:', totalDebit);
+  const totalCreditStr = Number.isFinite(totalCredit)
+    ? totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '0.00';
+  const totalDebitStr = Number.isFinite(totalDebit)
+    ? totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '0.00';
 
   let tagged = 0, untagged = 0;
   filteredRows.forEach(row => {

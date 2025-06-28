@@ -798,28 +798,28 @@ function StatementsContent() {
                   </div>
                 )}
                 
-                <TransactionTable
-                  rows={sortedAndFilteredTransactions.map(tx => {
-                    // Remove transactionData property without referencing it directly
-                    const filtered = Object.fromEntries(Object.entries(tx).filter(([key]) => key !== 'transactionData'));
-                    return {
-                      ...filtered,
-                      tags: tx.tags || []
-                    };
-                  })}
-                  headers={transactionHeaders}
-                  selectedRows={new Set(sortedAndFilteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
-                  onRowSelect={idx => {
-                    const tx = sortedAndFilteredTransactions[idx];
-                    if (tx) handleRowSelect(tx.id);
-                  }}
-                  onSelectAll={handleSelectAll}
-                  selectAll={selectAll}
-                  loading={loadingTransactions}
-                  error={transactionsError}
-                  onReorderHeaders={handleReorderHeaders}
+              <TransactionTable
+                rows={sortedAndFilteredTransactions.map(tx => {
+                  // Remove transactionData property without referencing it directly
+                  const filtered = Object.fromEntries(Object.entries(tx).filter(([key]) => key !== 'transactionData'));
+                  return {
+                    ...filtered,
+                    tags: tx.tags || []
+                  };
+                })}
+                headers={transactionHeaders}
+                selectedRows={new Set(sortedAndFilteredTransactions.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
+                onRowSelect={idx => {
+                  const tx = sortedAndFilteredTransactions[idx];
+                  if (tx) handleRowSelect(tx.id);
+                }}
+                onSelectAll={handleSelectAll}
+                selectAll={selectAll}
+                loading={loadingTransactions}
+                error={transactionsError}
+                onReorderHeaders={handleReorderHeaders}
                   onRemoveTag={handleRemoveTag}
-                />
+              />
               </div>
             )}
           </div>

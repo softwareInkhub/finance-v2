@@ -28,16 +28,16 @@ export async function POST(request: Request) {
     // Use provided fields for duplicate check
     const uniqueFields = Array.isArray(duplicateCheckFields) && duplicateCheckFields.length > 0 ? duplicateCheckFields : null;
     if (uniqueFields) {
-      const existingSet = new Set(
-        existing.map(tx => uniqueFields.map(f => (tx[f] || '').toString().trim().toLowerCase()).join('|'))
-      );
-      const newSet = new Set();
-      for (const row of rows) {
-        const key = uniqueFields.map(f => (row[f] || '').toString().trim().toLowerCase()).join('|');
-        if (existingSet.has(key) || newSet.has(key)) {
-          return NextResponse.json({ error: 'Duplicate transaction(s) exist. No transactions were saved.' }, { status: 400 });
-        }
-        newSet.add(key);
+    const existingSet = new Set(
+      existing.map(tx => uniqueFields.map(f => (tx[f] || '').toString().trim().toLowerCase()).join('|'))
+    );
+    const newSet = new Set();
+    for (const row of rows) {
+      const key = uniqueFields.map(f => (row[f] || '').toString().trim().toLowerCase()).join('|');
+      if (existingSet.has(key) || newSet.has(key)) {
+        return NextResponse.json({ error: 'Duplicate transaction(s) exist. No transactions were saved.' }, { status: 400 });
+      }
+      newSet.add(key);
       }
     }
 
