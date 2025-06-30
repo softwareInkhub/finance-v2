@@ -293,7 +293,7 @@ export default function SuperBankPage() {
     // Match dd/mm/yyyy, dd-mm-yyyy, dd/mm/yy, dd-mm-yy
     const match = dateStr.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
     if (match) {
-      let [_, dd, mm, yyyy] = match;
+      let [, dd, mm, yyyy] = match;
       if (yyyy.length === 2) yyyy = '20' + yyyy;
       // Pad day and month
       if (dd.length === 1) dd = '0' + dd;
@@ -311,16 +311,35 @@ export default function SuperBankPage() {
     return dateStr;
   }
 
-  // Flatten all transaction rows for rendering
-  const mappedRows: TransactionRow[] = transactions.map((tx) => {
+  // Helper to robustly parse Indian-style and scientific notation amounts
+  function parseIndianAmount(val: string | number | undefined): number {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+      // Remove all commas and spaces
+      const cleaned = val.replace(/,/g, '').trim();
+      // parseFloat handles scientific notation too
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? 0 : num;
+    }
+    return 0;
+  }
+
+  // Helper to format any value as Indian-style string
+  function formatIndianAmount(val: string | number | undefined): string {
+    const num = parseIndianAmount(val);
+    return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // Create mappedRowsWithConditions with proper condition evaluation
+  const mappedRowsWithConditions = transactions.map(tx => {
+    // Build the mapped row as for the table
     const mapping = bankMappings[tx.bankId]?.mapping || {};
-    // Reverse mapping: { [superHeader]: bankHeader }
-    const reverseMap: { [superHeader: string]: string } = {};
+    const reverseMap: Record<string, string> = {};
     Object.entries(mapping).forEach(([bankHeader, superHeader]) => {
       if (superHeader) reverseMap[superHeader] = bankHeader;
     });
-    const mappedRow: TransactionRow = {};
-    superHeader.forEach((sh) => {
+    const mappedRow: Record<string, string | number | Tag[] | undefined> = {};
+    superHeader.forEach(sh => {
       if (sh === 'Tags') {
         const bankTagCol = Object.keys(tx).find(
           key => key.toLowerCase().includes('tag')
@@ -335,6 +354,10 @@ export default function SuperBankPage() {
         const bankHeader = reverseMap[sh];
         const value = bankHeader ? tx[bankHeader] : tx[sh];
         mappedRow[sh] = typeof value === 'string' ? normalizeDateToDDMMYYYY(value) : value;
+      } else if (sh === 'Amount') {
+        const rawAmount = getValueForColumn(tx, String(tx.bankId), 'Amount');
+        mappedRow.Amount = formatIndianAmount(rawAmount); // always Indian style for UI
+        mappedRow.AmountRaw = parseIndianAmount(rawAmount); // for analytics
       } else {
         const bankHeader = reverseMap[sh];
         const value = bankHeader ? tx[bankHeader] : tx[sh];
@@ -342,54 +365,15 @@ export default function SuperBankPage() {
       }
     });
     mappedRow.id = tx.id;
+    // Apply conditions for Dr./Cr.
+    mappedRow['Dr./Cr.'] = getValueForColumn(tx, String(tx.bankId), 'Dr./Cr.');
     return mappedRow;
   });
 
-  const handleHeaderSave = async () => {
-    setHeaderLoading(true);
-    setHeaderError(null);
-    setHeaderSuccess(null);
-    const headerArr = headerInputs.map(h => h.trim()).filter(Boolean);
-    if (!headerArr.length) {
-      setHeaderError("Header cannot be empty");
-      setHeaderLoading(false);
-      return;
-    }
-    // Ensure 'Tags' is included
-    if (!headerArr.includes('Tags')) {
-      headerArr.push('Tags');
-    }
-    try {
-      const res = await fetch("/api/bank-header", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bankName: "SUPER BANK", bankId: null, header: headerArr })
-      });
-      if (!res.ok) throw new Error("Failed to save header");
-      setSuperHeader(headerArr);
-      setHeaderSuccess("Header saved!");
-      setHeaderEditing(false);
-    } catch {
-      setHeaderError("Failed to save header");
-    } finally {
-      setHeaderLoading(false);
-    }
-  };
-
-  const handleHeaderInputChange = (idx: number, value: string) => {
-    setHeaderInputs(inputs => inputs.map((h, i) => i === idx ? value : h));
-  };
-  const handleAddHeaderInput = () => {
-    setHeaderInputs(inputs => [...inputs, ""]);
-  };
-  const handleRemoveHeaderInput = (idx: number) => {
-    setHeaderInputs(inputs => inputs.filter((_, i) => i !== idx));
-  };
-
-  // Tag filter logic: filter mappedRows by selected tags first
+  // Tag filter logic: filter mappedRowsWithConditions by selected tags first
   const tagFilteredRows = tagFilters.length > 0
-    ? mappedRows.filter(row => Array.isArray(row.tags) && row.tags.some(t => tagFilters.includes(t.name)))
-    : mappedRows;
+    ? mappedRowsWithConditions.filter(row => Array.isArray(row.tags) && row.tags.some(t => tagFilters.includes(t.name)))
+    : mappedRowsWithConditions;
 
   // Then apply search and date filters to tagFilteredRows
   const filteredRows = tagFilteredRows.filter((row) => {
@@ -434,36 +418,6 @@ export default function SuperBankPage() {
     }
     return searchMatch && dateMatch;
   });
-
-  // Helper to parse both dd/mm/yyyy and dd-mm-yy, and with - as separator
-  function parseDate(dateStr: string): Date {
-    if (!dateStr || typeof dateStr !== 'string') return new Date('1970-01-01');
-
-    // Regex to match dd/mm/yyyy or dd-mm-yyyy (and yy)
-    const match = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-
-    if (match) {
-      const day = match[1];
-      const month = match[2];
-      let year = match[3];
-
-      if (year.length === 2) {
-        year = '20' + year;
-      }
-
-      // Create date, note that the month is 0-indexed in JavaScript's Date constructor.
-      return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
-    }
-    
-    // Fallback for ISO date strings or other formats recognized by new Date()
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) {
-      return d;
-    }
-
-    // Return a default date for invalid formats
-    return new Date('1970-01-01');
-  }
 
   // Filtered and searched rows (already present as filteredRows)
   const sortedAndFilteredRows = [...filteredRows].sort((a, b) => {
@@ -606,120 +560,31 @@ export default function SuperBankPage() {
       .finally(() => setLoading(false));
   };
 
-  // Filtered and searched rows (already present as filteredRows)
-  // Summary stats for AnalyticsSummary
-  const amountCol = superHeader.find(h => h.trim().toLowerCase() === 'amount');
-  console.log('amountCol:', amountCol);
+  // Analytics calculations using mappedRowsWithConditions (filteredRows already contains the filtered version)
   const totalAmount = filteredRows.reduce((sum, row) => {
-    const tx = transactions.find(t => t.id === row.id);
-    let amount: number | undefined = undefined;
-    if (tx) {
-      // Try conditions first
-      const condResult = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
-      if (typeof condResult.amount === 'number' && !isNaN(condResult.amount)) {
-        amount = condResult.amount;
-      }
-    }
-    // Fallback: try to parse from Amount column if not found
-    if (amount === undefined || isNaN(amount)) {
-      if (amountCol && row[amountCol] !== undefined && row[amountCol] !== null) {
-        const val = row[amountCol];
-        if (typeof val === 'string' || typeof val === 'number') {
-          amount = parseIndianNumber(val);
-          if (isNaN(amount)) amount = 0;
-        } else {
-          amount = 0;
-        }
-      } else {
-        amount = 0;
-      }
-    }
-    // Debug log for each row's amount value
-    console.log('row[amountCol]:', amountCol ? row[amountCol] : 'undefined', 'amountCol:', amountCol, 'row:', row);
-    return sum + amount;
-  }, 0).toLocaleString();
-
-  // Find the CR/DR column (case-insensitive, ignore punctuation and spaces, match both 'crdr' and 'drcr')
-  const crDrCol = superHeader.find(h => {
-    const norm = h.toLowerCase().replace(/[^a-z]/g, '');
-    return norm === 'crdr' || norm === 'drcr';
-  });
-
-  // Helper to parse Indian-style numbers (e.g., 11,11,111.00)
-  function parseIndianNumber(val: string | number | undefined | null): number {
-    if (typeof val === 'number') return val;
-    if (typeof val === 'string') {
-      // Remove all commas, then parse
-      const cleaned = val.replace(/,/g, '');
-      const num = parseFloat(cleaned);
-      return isNaN(num) ? 0 : num;
-    }
-    return 0;
-  }
+    const amountRaw = typeof row.AmountRaw === 'number' ? row.AmountRaw : 0;
+    return sum + amountRaw;
+  }, 0);
 
   // Calculate DR/CR totals for filteredRows
-  let totalCredit = 0;
-  let totalDebit = 0;
+  let totalCredit = 0, totalDebit = 0;
   filteredRows.forEach(row => {
-    const tx = transactions.find(t => t.id === row.id);
-    let amount: number | undefined = undefined;
-    let crdr = '';
-    
-    if (tx) {
-      const condResult = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
-      if (typeof condResult.amount === 'number' && !isNaN(condResult.amount)) {
-        amount = condResult.amount;
-      }
-      // Check if conditions set a CR/DR value
-      if (condResult.type) {
-        crdr = String(condResult.type).trim().toUpperCase();
-      }
-    }
-    
-    if (amount === undefined || isNaN(amount)) {
-      if (amountCol && row[amountCol] !== undefined && row[amountCol] !== null) {
-        const val = row[amountCol];
-        if (typeof val === 'string' || typeof val === 'number') {
-          amount = parseIndianNumber(val);
-          if (!Number.isFinite(amount)) amount = 0;
+    const amount = typeof row.AmountRaw === 'number' && isFinite(row.AmountRaw) ? row.AmountRaw : 0;
+    let crdr = row['Dr./Cr.'];
+    if (typeof crdr === 'string') {
+      crdr = crdr.trim().toUpperCase();
         } else {
-          amount = 0;
-        }
-      } else {
-        amount = 0;
+      crdr = '';
       }
-    }
-    
-    // Use CR/DR from conditions first, then fall back to column if present
-    if (!crdr && crDrCol && row[crDrCol]) {
-      crdr = String(row[crDrCol]).trim().toUpperCase();
-    }
-    
-    // Also try to get CR/DR from conditions using getValueForColumn
-    if (!crdr && tx) {
-      const crdrFromConditions = getValueForColumn(row as unknown as TransactionRow, tx.bankId, 'Dr./Cr.');
-      if (crdrFromConditions) {
-        crdr = String(crdrFromConditions).trim().toUpperCase();
-      }
-    }
-    
     if (crdr === 'CR') {
-      if (!Number.isFinite(amount)) amount = 0;
       totalCredit += Math.abs(amount);
     } else if (crdr === 'DR') {
-      if (!Number.isFinite(amount)) amount = 0;
       totalDebit += Math.abs(amount);
     }
-    // If CR/DR column is missing or empty, ignore for credit/debit totals
   });
-  // Debug log
-  console.log('totalCredit:', totalCredit, 'totalDebit:', totalDebit);
-  const totalCreditStr = Number.isFinite(totalCredit)
-    ? totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : '0.00';
-  const totalDebitStr = Number.isFinite(totalDebit)
-    ? totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : '0.00';
+  if (!isFinite(totalCredit)) totalCredit = 0;
+  if (!isFinite(totalDebit)) totalDebit = 0;
+  console.log('CREDIT/DEBIT DEBUG', { totalCredit, totalDebit, filteredRows });
 
   let tagged = 0, untagged = 0;
   filteredRows.forEach(row => {
@@ -778,64 +643,7 @@ export default function SuperBankPage() {
  
 
   // Helper: evaluate conditions for a row and bankId
-  function evaluateConditions(row: TransactionRow, bankId: string): { amount: number | undefined, type: string | undefined } {
-    const rawConds = bankMappings[bankId]?.conditions;
-    const conditions = Array.isArray(rawConds) ? rawConds : [];
-    for (const cond of conditions) {
-      const val = row[cond.if.field];
-      const op = cond.if.op;
-      const cmp = cond.if.value;
-      let match = false;
-      // Robust normalization
-      const valStr = (val !== undefined && val !== null) ? String(val).trim() : '';
-      const cmpStr = (cmp !== undefined && cmp !== null) ? String(cmp).trim() : '';
-      const valNum = valStr === '' ? NaN : !isNaN(Number(valStr)) ? parseFloat(valStr) : NaN;
-      const cmpNum = cmpStr === '' ? NaN : !isNaN(Number(cmpStr)) ? parseFloat(cmpStr) : NaN;
-      const bothNumeric = !isNaN(valNum) && !isNaN(cmpNum);
-      if (op === 'present') {
-        match = valStr !== '';
-      } else if (op === 'not_present') {
-        match = valStr === '';
-      } else if (op === '==') {
-        if (bothNumeric) {
-          match = valNum === cmpNum;
-        } else {
-          match = valStr === cmpStr;
-        }
-      } else if (op === '!=') {
-        if (bothNumeric) {
-          match = valNum !== cmpNum;
-        } else {
-          match = valStr !== cmpStr;
-        }
-      } else if (op === '>=') {
-        match = bothNumeric && valNum >= cmpNum;
-      } else if (op === '<=') {
-        match = bothNumeric && valNum <= cmpNum;
-      } else if (op === '>') {
-        match = bothNumeric && valNum > cmpNum;
-      } else if (op === '<') {
-        match = bothNumeric && valNum < cmpNum;
-      }
-      if (match) {
-        // Evaluate Amount (support -field for negative)
-        let amount: number | undefined = undefined;
-        const amountField = cond.then.Amount;
-        if (typeof amountField === 'string' && amountField.startsWith('-')) {
-          const field = amountField.slice(1);
-          const v = row[field];
-          if (typeof v === 'string') amount = -parseFloat(v);
-          else if (typeof v === 'number') amount = -v;
-        } else if (typeof amountField === 'string') {
-          const v = row[amountField];
-          if (typeof v === 'string') amount = parseFloat(v);
-          else if (typeof v === 'number') amount = v;
-        }
-        return { amount, type: cond.then.Type };
-      }
-    }
-    return { amount: undefined, type: undefined };
-  }
+ 
 
   // Helper: get value for any column using per-bank conditions
   function getValueForColumn(row: TransactionRow, bankId: string, columnName: string): string | number | undefined {
@@ -883,24 +691,43 @@ export default function SuperBankPage() {
           // If result is a field reference, resolve it
           if (typeof result === 'string' && row[result] !== undefined) {
             const v = row[result];
-            if (typeof v === 'string' || typeof v === 'number') return v;
+            if (typeof v === 'string' || typeof v === 'number') {
+              return v;
+            }
             return undefined;
           }
-          if (typeof result === 'string' || typeof result === 'number') return result;
+          if (typeof result === 'string' || typeof result === 'number') {
+            return result;
+          }
           return undefined;
         }
       }
     }
-    // Fallback: mapped field or raw value
+    // Robust fallback: check mapping, then raw value
     const mapping = bankMappings[bankId]?.mapping;
-    if (mapping && mapping[columnName] && row[mapping[columnName]]) {
+    // if (mapping && mapping[columnName]) {
+    //   console.log('Mapping fallback debug:', {
+    //     bankId,
+    //     columnName,
+    //     mappingField: mapping[columnName],
+    //     value: row[mapping[columnName]],
+    //     row
+    //   });
+    // }
+    if (mapping && mapping[columnName] && row[mapping[columnName]] !== undefined) {
       const v = row[mapping[columnName]];
-      if (typeof v === 'string' || typeof v === 'number') return v;
+      if (typeof v === 'string' || typeof v === 'number') {
+        return v;
+      }
       return undefined;
     }
-    // Otherwise, return raw value
+    if (row[columnName] !== undefined) {
     const v = row[columnName];
-    if (typeof v === 'string' || typeof v === 'number') return v;
+      if (typeof v === 'string' || typeof v === 'number') {
+        return v;
+      }
+      return undefined;
+    }
     return undefined;
   }
 
@@ -915,6 +742,87 @@ export default function SuperBankPage() {
         .catch(() => setUserEmail(null));
     }
   }, []);
+
+  useEffect(() => {
+    if (
+      transactions.length > 0 &&
+      Object.keys(bankMappings).length > 0 &&
+      superHeader.length > 0
+    ) {
+      console.log('Mapped Rows with Condition Values (after all data loaded):', mappedRowsWithConditions);
+    }
+  }, [transactions, bankMappings, superHeader, mappedRowsWithConditions]);
+
+  const handleHeaderSave = async () => {
+    setHeaderLoading(true);
+    setHeaderError(null);
+    setHeaderSuccess(null);
+    const headerArr = headerInputs.map(h => h.trim()).filter(Boolean);
+    if (!headerArr.length) {
+      setHeaderError("Header cannot be empty");
+      setHeaderLoading(false);
+      return;
+    }
+    // Ensure 'Tags' is included
+    if (!headerArr.includes('Tags')) {
+      headerArr.push('Tags');
+    }
+    try {
+      const res = await fetch("/api/bank-header", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bankName: "SUPER BANK", bankId: null, header: headerArr })
+      });
+      if (!res.ok) throw new Error("Failed to save header");
+      setSuperHeader(headerArr);
+      setHeaderSuccess("Header saved!");
+      setHeaderEditing(false);
+    } catch {
+      setHeaderError("Failed to save header");
+    } finally {
+      setHeaderLoading(false);
+    }
+  };
+
+  const handleHeaderInputChange = (idx: number, value: string) => {
+    setHeaderInputs(inputs => inputs.map((h, i) => i === idx ? value : h));
+  };
+  const handleAddHeaderInput = () => {
+    setHeaderInputs(inputs => [...inputs, ""]);
+  };
+  const handleRemoveHeaderInput = (idx: number) => {
+    setHeaderInputs(inputs => inputs.filter((_, i) => i !== idx));
+  };
+
+  // Helper to parse both dd/mm/yyyy and dd-mm-yy, and with - as separator
+  function parseDate(dateStr: string): Date {
+    if (!dateStr || typeof dateStr !== 'string') return new Date('1970-01-01');
+
+    // Regex to match dd/mm/yyyy or dd-mm-yyyy (and yy)
+    const match = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+
+    if (match) {
+      const day = match[1];
+      const month = match[2];
+      let year = match[3];
+
+      if (year.length === 2) {
+        year = '20' + year;
+      }
+
+      // Create date, note that the month is 0-indexed in JavaScript's Date constructor.
+      return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+    }
+    
+    // Fallback for ISO date strings or other formats recognized by new Date()
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      return d;
+    }
+
+    // Return a default date for invalid formats
+    return new Date('1970-01-01');
+  }
 
   return (
     <div className="min-h-screen py-4 sm:py-6 px-2 sm:px-4">
@@ -1142,7 +1050,10 @@ export default function SuperBankPage() {
             onReorderHeaders={handleReorderHeaders}
             transactions={transactions}
             bankMappings={bankMappings}
-            getValueForColumn={getValueForColumn}
+            getValueForColumn={(tx, bankId, sh) => {
+              const value = getValueForColumn(tx, bankId, sh);
+              return value;
+            }}
           />
         </div>
       </div>

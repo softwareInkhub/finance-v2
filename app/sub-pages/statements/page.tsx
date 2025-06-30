@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import Modal from '../../components/Modals/Modal';
 import StatementPreviewModal from '../../components/Modals/StatementPreviewModal';
 import { RiFileList3Line, RiUpload2Line, RiDeleteBin6Line, RiPriceTag3Line } from 'react-icons/ri';
@@ -511,7 +510,7 @@ function StatementsContent() {
       fetch(`/api/bank-header?bankName=${encodeURIComponent(bankName)}`)
         .then(res => res.json())
         .then(data => {
-          let headerOrder = Array.isArray(data.header) ? data.header : [];
+          const headerOrder = Array.isArray(data.header) ? data.header : [];
           // Find all keys in filtered transactions
           const allKeys = Array.from(new Set(filteredTransactions.flatMap(tx => Object.keys(tx)))).filter(key => key !== 'id' && key !== 'transactionData');
           // Append any extra fields not in the header
@@ -779,7 +778,7 @@ function StatementsContent() {
                     top: selection?.y !== undefined ? selection.y + 8 : 48, 
                     zIndex: 1001 
                   }} className="bg-white border border-blue-200 rounded shadow-lg px-3 sm:px-4 py-2 sm:py-3 flex flex-col gap-2 sm:gap-3 items-center">
-                    <span className="text-sm">Apply tag "{pendingTag.tagName}" to:</span>
+                    <span className="text-sm">Apply tag &quot;{pendingTag.tagName}&quot; to:</span>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <button className="px-3 py-1 bg-green-600 text-white rounded font-semibold text-xs hover:bg-green-700" 
                               onClick={handleApplyTagToRow}>Only this transaction</button>

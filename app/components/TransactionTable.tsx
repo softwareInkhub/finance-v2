@@ -36,7 +36,8 @@ function normalizeDateToDDMMYYYY(dateStr: string): string {
   if (!dateStr) return '';
   const match = dateStr.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
   if (match) {
-    let [_, dd, mm, yyyy] = match;
+    const [, ddRaw, mmRaw, yyyyRaw] = match;
+    let dd = ddRaw, mm = mmRaw, yyyy = yyyyRaw;
     if (yyyy.length === 2) yyyy = '20' + yyyy;
     if (dd.length === 1) dd = '0' + dd;
     if (mm.length === 1) mm = '0' + mm;
@@ -258,29 +259,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             </span>
                           ))}
                         </div>
-                        ) : sh.replace(/[^a-z]/gi, '').toLowerCase() === 'amount' ? (
-                          (() => {
-                            let val: string | number | undefined = undefined;
-                            if (getValueForColumn && tx) {
-                              const v = getValueForColumn(tx, tx.bankId, sh);
-                              if (typeof v === 'string' || typeof v === 'number') {
-                                val = v;
-                              }
-                            }
-                            if (val === undefined || val === null || val === '') {
-                              const v = row[sh];
-                              if (typeof v === 'string' || typeof v === 'number') {
-                                val = v;
-                              }
-                            }
-                            if (typeof val === 'number' && !isNaN(val)) {
-                              return val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                            } else if (typeof val === 'string' && val.trim() !== '' && !isNaN(Number(val.replace(/,/g, '')))) {
-                              return Number(val.replace(/,/g, '')).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                            } else {
-                              return val !== undefined && val !== null ? String(val) : '';
-                            }
-                          })()
+                        ) : sh.toLowerCase() === 'amount' ? (
+                          String(row['Amount'] ?? '')
                         ) : sh.toLowerCase() === 'date' ? (
                           (() => {
                             const val = row[sh];
