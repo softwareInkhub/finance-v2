@@ -61,12 +61,12 @@ const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
           </div>
           {typeof totalCredit !== 'undefined' && (
             <div className="px-3 sm:px-4 py-2 bg-cyan-100 text-cyan-800 rounded-lg font-semibold shadow text-xs sm:text-sm">
-              Credit: {totalCredit}
+              Credit: {typeof totalCredit === 'number' ? totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (Number(totalCredit).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
             </div>
           )}
           {typeof totalDebit !== 'undefined' && (
             <div className="px-3 sm:px-4 py-2 bg-rose-100 text-rose-800 rounded-lg font-semibold shadow text-xs sm:text-sm">
-              Debit: {totalDebit}
+              Debit: {typeof totalDebit === 'number' ? totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (Number(totalDebit).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
             </div>
           )}
         </>

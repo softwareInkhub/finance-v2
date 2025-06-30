@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const { csv, statementId, startRow, endRow, bankId, accountId, fileName, userId, bankName, accountName, duplicateCheckFields } = await request.json();
+    const { csv, statementId, startRow, endRow, bankId, accountId, fileName, userId, bankName, accountName, duplicateCheckFields, s3FileUrl } = await request.json();
     if (!csv || !statementId || startRow == null || endRow == null || !bankId || !accountId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -26,7 +26,8 @@ export async function POST(request: Request) {
     const existing = (existingResult.Items || []) as Record<string, string>[];
 
     // Use provided fields for duplicate check
-    const uniqueFields = Array.isArray(duplicateCheckFields) && duplicateCheckFields.length > 0 ? duplicateCheckFields : ['date', 'amount'];
+    const uniqueFields = Array.isArray(duplicateCheckFields) && duplicateCheckFields.length > 0 ? duplicateCheckFields : null;
+    if (uniqueFields) {
     const existingSet = new Set(
       existing.map(tx => uniqueFields.map(f => (tx[f] || '').toString().trim().toLowerCase()).join('|'))
     );
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Duplicate transaction(s) exist. No transactions were saved.' }, { status: 400 });
       }
       newSet.add(key);
+      }
     }
 
     // Save each row as a separate transaction item
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
       cleaned['accountName'] = accountName || '';
       cleaned['statementId'] = statementId;
       cleaned['fileName'] = fileName || '';
+      cleaned['s3FileUrl'] = s3FileUrl || '';
       cleaned['createdAt'] = now;
       cleaned['id'] = uuidv4();
       return docClient.send(new PutCommand({

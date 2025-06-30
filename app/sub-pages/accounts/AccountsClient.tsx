@@ -273,11 +273,16 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
     setMappingError(null);
     setMappingSuccess(null);
     try {
+      // Reverse the mapping: key = super bank header, value = original field
+      const reversedMapping: { [key: string]: string } = {};
+      Object.entries(mapping).forEach(([originalField, superHeader]) => {
+        if (superHeader) reversedMapping[superHeader] = originalField;
+      });
       console.log('Saving mapping with conditions:', conditions);
       const res = await fetch('/api/bank-header', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bankName, bankId, header: bankHeader, mapping, conditions }),
+        body: JSON.stringify({ bankName, bankId, header: bankHeader, mapping: reversedMapping, conditions }),
       });
       if (!res.ok) throw new Error('Failed to save mapping');
       console.log('Mapping and conditions saved successfully!');

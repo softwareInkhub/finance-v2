@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { RiPriceTag3Line } from 'react-icons/ri';
 import { Transaction, TransactionRow, Tag } from '../types/transaction';
 
@@ -31,6 +31,28 @@ interface TransactionTableProps {
 
 const DEFAULT_WIDTH = 140;
 
+// Helper to normalize date to dd/mm/yyyy
+function normalizeDateToDDMMYYYY(dateStr: string): string {
+  if (!dateStr) return '';
+  const match = dateStr.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+  if (match) {
+    const [, ddRaw, mmRaw, yyyyRaw] = match;
+    let dd = ddRaw, mm = mmRaw, yyyy = yyyyRaw;
+    if (yyyy.length === 2) yyyy = '20' + yyyy;
+    if (dd.length === 1) dd = '0' + dd;
+    if (mm.length === 1) mm = '0' + mm;
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  return dateStr;
+}
+
 const TransactionTable: React.FC<TransactionTableProps> = ({
   rows,
   headers,
@@ -55,6 +77,40 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
   // Drag and drop state for headers
   const [draggedHeader, setDraggedHeader] = useState<string | null>(null);
+
+  // Double scroll logic
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const [tableWidth, setTableWidth] = useState(0);
+
+  useEffect(() => {
+    // Set the width of the top scroll bar to match the table
+    if (tableScrollRef.current) {
+      setTableWidth(tableScrollRef.current.scrollWidth);
+    }
+  }, [headers, columnWidths, rows.length]);
+
+  // Sync scroll positions
+  useEffect(() => {
+    const handleTopScroll = () => {
+      if (tableScrollRef.current && topScrollRef.current) {
+        tableScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+      }
+    };
+    const handleTableScroll = () => {
+      if (tableScrollRef.current && topScrollRef.current) {
+        topScrollRef.current.scrollLeft = tableScrollRef.current.scrollLeft;
+      }
+    };
+    const top = topScrollRef.current;
+    const table = tableScrollRef.current;
+    if (top) top.addEventListener('scroll', handleTopScroll);
+    if (table) table.addEventListener('scroll', handleTableScroll);
+    return () => {
+      if (top) top.removeEventListener('scroll', handleTopScroll);
+      if (table) table.removeEventListener('scroll', handleTableScroll);
+    };
+  }, [rows.length, headers.length, columnWidths]);
 
   // Mouse event handlers for resizing
   const handleMouseDown = (e: React.MouseEvent, header: string) => {
@@ -108,7 +164,22 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   return (
-    <div className="overflow-x-auto">
+    <div>
+      {/* Top horizontal scrollbar */}
+      <div
+        ref={topScrollRef}
+        style={{
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          height: 16,
+          width: '100%',
+          marginBottom: 2,
+        }}
+      >
+        <div style={{ width: tableWidth, height: 1 }} />
+      </div>
+      {/* Table with bottom scrollbar */}
+      <div ref={tableScrollRef} style={{ overflowX: 'auto' }}>
       {loading ? (
         <div className="text-gray-500 text-sm">Loading transactions...</div>
       ) : error ? (
@@ -188,6 +259,14 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             </span>
                           ))}
                         </div>
+                        ) : sh.toLowerCase() === 'amount' ? (
+                          String(row['Amount'] ?? '')
+                        ) : sh.toLowerCase() === 'date' ? (
+                          (() => {
+                            const val = row[sh];
+                            if (typeof val === 'string') return normalizeDateToDDMMYYYY(val);
+                            return val !== undefined && val !== null ? String(val) : '';
+                          })()
                       ) : getValueForColumn && tx ? (
                         (() => {
                           const val = getValueForColumn(tx, tx.bankId, sh);
@@ -215,6 +294,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
           </tbody>
         </table>
       )}
+      </div>
     </div>
   );
 };

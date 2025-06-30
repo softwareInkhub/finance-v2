@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface HeaderEditorProps {
   headerInputs: string[];
@@ -22,12 +22,65 @@ const HeaderEditor: React.FC<HeaderEditorProps> = ({
   loading,
   error,
   success,
-}) => (
+}) => {
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  // Helper to reorder array
+  const reorder = (arr: string[], from: number, to: number) => {
+    const updated = [...arr];
+    const [removed] = updated.splice(from, 1);
+    updated.splice(to, 0, removed);
+    return updated;
+  };
+
+  // Local state for drag-and-drop order
+  const [localOrder, setLocalOrder] = useState<string[]>(headerInputs);
+
+  // Sync localOrder with headerInputs if they change externally
+  React.useEffect(() => {
+    setLocalOrder(headerInputs);
+  }, [headerInputs]);
+
+  // When drag ends, update the parent order
+  const handleDrop = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const newOrder = reorder(localOrder, fromIdx, toIdx);
+    setLocalOrder(newOrder);
+    // Update parent state
+    // We'll call onHeaderInputChange for each item to update the order
+    newOrder.forEach((val, idx) => {
+      if (headerInputs[idx] !== val) {
+        onHeaderInputChange(idx, val);
+      }
+    });
+  };
+
+  return (
   <form onSubmit={onSave} className="flex flex-col gap-2 mt-3 sm:mt-4">
     <label className="block text-xs font-medium text-blue-700 mb-1">Edit Header Columns</label>
     <div className="flex flex-wrap gap-2 sm:gap-3 items-center bg-white/70 p-2 sm:p-3 rounded border border-blue-100 shadow-sm">
-      {headerInputs.map((header, idx) => (
-        <div key={idx} className="relative group flex-1 min-w-[120px]">
+        {localOrder.map((header, idx) => (
+          <div
+            key={idx}
+            className={`relative group flex-1 min-w-[120px] ${dragOverIdx === idx ? 'ring-2 ring-blue-400' : ''}`}
+            draggable
+            onDragStart={() => setDraggedIdx(idx)}
+            onDragOver={e => {
+              e.preventDefault();
+              setDragOverIdx(idx);
+            }}
+            onDrop={e => {
+              e.preventDefault();
+              if (draggedIdx !== null) handleDrop(draggedIdx, idx);
+              setDraggedIdx(null);
+              setDragOverIdx(null);
+            }}
+            onDragEnd={() => {
+              setDraggedIdx(null);
+              setDragOverIdx(null);
+            }}
+          >
           <input
             type="text"
             value={header}
@@ -36,7 +89,7 @@ const HeaderEditor: React.FC<HeaderEditorProps> = ({
             placeholder={`Header ${idx + 1}`}
             disabled={loading}
           />
-          {headerInputs.length > 1 && (
+            {localOrder.length > 1 && (
             <button
               type="button"
               className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
@@ -81,5 +134,6 @@ const HeaderEditor: React.FC<HeaderEditorProps> = ({
     {success && <div className="text-green-600 mt-2 text-sm">{success}</div>}
   </form>
 );
+};
 
 export default HeaderEditor; 

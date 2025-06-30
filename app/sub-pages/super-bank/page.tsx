@@ -71,6 +71,18 @@ export default function SuperBankPage() {
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
+  // Drag-and-drop state for header editing
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  // Helper to reorder array
+  const reorder = (arr: string[], from: number, to: number) => {
+    const updated = [...arr];
+    const [removed] = updated.splice(from, 1);
+    updated.splice(to, 0, removed);
+    return updated;
+  };
+
   // Fetch all transactions
   useEffect(() => {
     setLoading(true);
@@ -125,7 +137,8 @@ export default function SuperBankPage() {
 
   // Fetch all tags
   useEffect(() => {
-    fetch('/api/tags')
+    const userId = localStorage.getItem('userId');
+    fetch('/api/tags?userId=' + userId)
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setAllTags(data); else setAllTags([]); });
   }, []);
@@ -274,16 +287,59 @@ export default function SuperBankPage() {
       .finally(() => setLoading(false));
   };
 
-  // Flatten all transaction rows for rendering
-  const mappedRows: TransactionRow[] = transactions.map((tx) => {
+  // Helper to normalize date to dd/mm/yyyy
+  function normalizeDateToDDMMYYYY(dateStr: string): string {
+    if (!dateStr) return '';
+    // Match dd/mm/yyyy, dd-mm-yyyy, dd/mm/yy, dd-mm-yy
+    const match = dateStr.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+    if (match) {
+      let [, dd, mm, yyyy] = match;
+      if (yyyy.length === 2) yyyy = '20' + yyyy;
+      // Pad day and month
+      if (dd.length === 1) dd = '0' + dd;
+      if (mm.length === 1) mm = '0' + mm;
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    // Try ISO or fallback
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    return dateStr;
+  }
+
+  // Helper to robustly parse Indian-style and scientific notation amounts
+  function parseIndianAmount(val: string | number | undefined): number {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+      // Remove all commas and spaces
+      const cleaned = val.replace(/,/g, '').trim();
+      // parseFloat handles scientific notation too
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? 0 : num;
+    }
+    return 0;
+  }
+
+  // Helper to format any value as Indian-style string
+  function formatIndianAmount(val: string | number | undefined): string {
+    const num = parseIndianAmount(val);
+    return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // Create mappedRowsWithConditions with proper condition evaluation
+  const mappedRowsWithConditions = transactions.map(tx => {
+    // Build the mapped row as for the table
     const mapping = bankMappings[tx.bankId]?.mapping || {};
-    // Reverse mapping: { [superHeader]: bankHeader }
-    const reverseMap: { [superHeader: string]: string } = {};
+    const reverseMap: Record<string, string> = {};
     Object.entries(mapping).forEach(([bankHeader, superHeader]) => {
       if (superHeader) reverseMap[superHeader] = bankHeader;
     });
-    const mappedRow: TransactionRow = {};
-    superHeader.forEach((sh) => {
+    const mappedRow: Record<string, string | number | Tag[] | undefined> = {};
+    superHeader.forEach(sh => {
       if (sh === 'Tags') {
         const bankTagCol = Object.keys(tx).find(
           key => key.toLowerCase().includes('tag')
@@ -293,6 +349,15 @@ export default function SuperBankPage() {
           : [];
         mappedRow['Tags'] = tags;
         mappedRow['tags'] = tags;
+      } else if (sh.toLowerCase() === 'date') {
+        // Normalize date
+        const bankHeader = reverseMap[sh];
+        const value = bankHeader ? tx[bankHeader] : tx[sh];
+        mappedRow[sh] = typeof value === 'string' ? normalizeDateToDDMMYYYY(value) : value;
+      } else if (sh === 'Amount') {
+        const rawAmount = getValueForColumn(tx, String(tx.bankId), 'Amount');
+        mappedRow.Amount = formatIndianAmount(rawAmount); // always Indian style for UI
+        mappedRow.AmountRaw = parseIndianAmount(rawAmount); // for analytics
       } else {
         const bankHeader = reverseMap[sh];
         const value = bankHeader ? tx[bankHeader] : tx[sh];
@@ -300,54 +365,15 @@ export default function SuperBankPage() {
       }
     });
     mappedRow.id = tx.id;
+    // Apply conditions for Dr./Cr.
+    mappedRow['Dr./Cr.'] = getValueForColumn(tx, String(tx.bankId), 'Dr./Cr.');
     return mappedRow;
   });
 
-  const handleHeaderSave = async () => {
-    setHeaderLoading(true);
-    setHeaderError(null);
-    setHeaderSuccess(null);
-    const headerArr = headerInputs.map(h => h.trim()).filter(Boolean);
-    if (!headerArr.length) {
-      setHeaderError("Header cannot be empty");
-      setHeaderLoading(false);
-      return;
-    }
-    // Ensure 'Tags' is included
-    if (!headerArr.includes('Tags')) {
-      headerArr.push('Tags');
-    }
-    try {
-      const res = await fetch("/api/bank-header", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bankName: "SUPER BANK", bankId: null, header: headerArr })
-      });
-      if (!res.ok) throw new Error("Failed to save header");
-      setSuperHeader(headerArr);
-      setHeaderSuccess("Header saved!");
-      setHeaderEditing(false);
-    } catch {
-      setHeaderError("Failed to save header");
-    } finally {
-      setHeaderLoading(false);
-    }
-  };
-
-  const handleHeaderInputChange = (idx: number, value: string) => {
-    setHeaderInputs(inputs => inputs.map((h, i) => i === idx ? value : h));
-  };
-  const handleAddHeaderInput = () => {
-    setHeaderInputs(inputs => [...inputs, ""]);
-  };
-  const handleRemoveHeaderInput = (idx: number) => {
-    setHeaderInputs(inputs => inputs.filter((_, i) => i !== idx));
-  };
-
-  // Tag filter logic: filter mappedRows by selected tags first
+  // Tag filter logic: filter mappedRowsWithConditions by selected tags first
   const tagFilteredRows = tagFilters.length > 0
-    ? mappedRows.filter(row => Array.isArray(row.tags) && row.tags.some(t => tagFilters.includes(t.name)))
-    : mappedRows;
+    ? mappedRowsWithConditions.filter(row => Array.isArray(row.tags) && row.tags.some(t => tagFilters.includes(t.name)))
+    : mappedRowsWithConditions;
 
   // Then apply search and date filters to tagFilteredRows
   const filteredRows = tagFilteredRows.filter((row) => {
@@ -392,36 +418,6 @@ export default function SuperBankPage() {
     }
     return searchMatch && dateMatch;
   });
-
-  // Helper to parse both dd/mm/yyyy and dd-mm-yy, and with - as separator
-  function parseDate(dateStr: string): Date {
-    if (!dateStr || typeof dateStr !== 'string') return new Date('1970-01-01');
-
-    // Regex to match dd/mm/yyyy or dd-mm-yyyy (and yy)
-    const match = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-
-    if (match) {
-      const day = match[1];
-      const month = match[2];
-      let year = match[3];
-
-      if (year.length === 2) {
-        year = '20' + year;
-      }
-
-      // Create date, note that the month is 0-indexed in JavaScript's Date constructor.
-      return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
-    }
-    
-    // Fallback for ISO date strings or other formats recognized by new Date()
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) {
-      return d;
-    }
-
-    // Return a default date for invalid formats
-    return new Date('1970-01-01');
-  }
 
   // Filtered and searched rows (already present as filteredRows)
   const sortedAndFilteredRows = [...filteredRows].sort((a, b) => {
@@ -530,13 +526,21 @@ export default function SuperBankPage() {
     }
   };
 
-  // Remove a tag from a transaction, with confirmation
+  // Handler to remove a tag from a transaction
   const handleRemoveTag = async (rowIdx: number, tagId: string) => {
-    if (!window.confirm('Are you sure you want to remove this tag?')) return;
-    const row = filteredRows[rowIdx];
+    const row = sortedAndFilteredRows[rowIdx];
     if (!row || !row.id) return;
     const tx = transactions.find(t => t.id === row.id);
     if (!tx) return;
+    
+    // Find the tag name for the confirmation message
+    const tagToRemove = Array.isArray(tx.tags) ? tx.tags.find(t => t.id === tagId) : null;
+    const tagName = tagToRemove?.name || 'this tag';
+    
+    // Show confirmation dialog
+    const confirmed = window.confirm(`Are you sure you want to remove the tag "${tagName}" from this transaction?`);
+    if (!confirmed) return;
+    
     const tags = Array.isArray(tx.tags) ? tx.tags.filter((t) => t.id !== tagId) : [];
     await fetch('/api/transaction/update', {
       method: 'POST',
@@ -556,31 +560,31 @@ export default function SuperBankPage() {
       .finally(() => setLoading(false));
   };
 
-  // Filtered and searched rows (already present as filteredRows)
-  // Summary stats for AnalyticsSummary
-  const amountCol = superHeader.find(h => h.toLowerCase().includes('amount'));
+  // Analytics calculations using mappedRowsWithConditions (filteredRows already contains the filtered version)
   const totalAmount = filteredRows.reduce((sum, row) => {
-    const tx = transactions.find(t => t.id === row.id);
-    if (!tx) return sum;
-    const { amount } = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
-    return sum + (typeof amount === 'number' && !isNaN(amount) ? amount : 0);
-  }, 0).toLocaleString();
+    const amountRaw = typeof row.AmountRaw === 'number' ? row.AmountRaw : 0;
+    return sum + amountRaw;
+  }, 0);
 
   // Calculate DR/CR totals for filteredRows
   let totalCredit = 0, totalDebit = 0;
   filteredRows.forEach(row => {
-    const tx = transactions.find(t => t.id === row.id);
-    if (!tx) return;
-    const { amount, type } = evaluateConditions(row as unknown as TransactionRow, tx.bankId);
-    if (typeof amount === 'number' && !isNaN(amount)) {
-      if (type === 'CR') totalCredit += Math.abs(amount);
-      else if (type === 'DR') totalDebit += Math.abs(amount);
-      else if (amount > 0) totalCredit += amount;
-      else if (amount < 0) totalDebit += Math.abs(amount);
+    const amount = typeof row.AmountRaw === 'number' && isFinite(row.AmountRaw) ? row.AmountRaw : 0;
+    let crdr = row['Dr./Cr.'];
+    if (typeof crdr === 'string') {
+      crdr = crdr.trim().toUpperCase();
+        } else {
+      crdr = '';
+      }
+    if (crdr === 'CR') {
+      totalCredit += Math.abs(amount);
+    } else if (crdr === 'DR') {
+      totalDebit += Math.abs(amount);
     }
   });
-  const totalCreditStr = totalCredit ? totalCredit.toLocaleString() : undefined;
-  const totalDebitStr = totalDebit ? totalDebit.toLocaleString() : undefined;
+  if (!isFinite(totalCredit)) totalCredit = 0;
+  if (!isFinite(totalDebit)) totalDebit = 0;
+  console.log('CREDIT/DEBIT DEBUG', { totalCredit, totalDebit, filteredRows });
 
   let tagged = 0, untagged = 0;
   filteredRows.forEach(row => {
@@ -639,64 +643,7 @@ export default function SuperBankPage() {
  
 
   // Helper: evaluate conditions for a row and bankId
-  function evaluateConditions(row: TransactionRow, bankId: string): { amount: number | undefined, type: string | undefined } {
-    const rawConds = bankMappings[bankId]?.conditions;
-    const conditions = Array.isArray(rawConds) ? rawConds : [];
-    for (const cond of conditions) {
-      const val = row[cond.if.field];
-      const op = cond.if.op;
-      const cmp = cond.if.value;
-      let match = false;
-      // Robust normalization
-      const valStr = (val !== undefined && val !== null) ? String(val).trim() : '';
-      const cmpStr = (cmp !== undefined && cmp !== null) ? String(cmp).trim() : '';
-      const valNum = valStr === '' ? NaN : !isNaN(Number(valStr)) ? parseFloat(valStr) : NaN;
-      const cmpNum = cmpStr === '' ? NaN : !isNaN(Number(cmpStr)) ? parseFloat(cmpStr) : NaN;
-      const bothNumeric = !isNaN(valNum) && !isNaN(cmpNum);
-      if (op === 'present') {
-        match = valStr !== '';
-      } else if (op === 'not_present') {
-        match = valStr === '';
-      } else if (op === '==') {
-        if (bothNumeric) {
-          match = valNum === cmpNum;
-        } else {
-          match = valStr === cmpStr;
-        }
-      } else if (op === '!=') {
-        if (bothNumeric) {
-          match = valNum !== cmpNum;
-        } else {
-          match = valStr !== cmpStr;
-        }
-      } else if (op === '>=') {
-        match = bothNumeric && valNum >= cmpNum;
-      } else if (op === '<=') {
-        match = bothNumeric && valNum <= cmpNum;
-      } else if (op === '>') {
-        match = bothNumeric && valNum > cmpNum;
-      } else if (op === '<') {
-        match = bothNumeric && valNum < cmpNum;
-      }
-      if (match) {
-        // Evaluate Amount (support -field for negative)
-        let amount: number | undefined = undefined;
-        const amountField = cond.then.Amount;
-        if (typeof amountField === 'string' && amountField.startsWith('-')) {
-          const field = amountField.slice(1);
-          const v = row[field];
-          if (typeof v === 'string') amount = -parseFloat(v);
-          else if (typeof v === 'number') amount = -v;
-        } else if (typeof amountField === 'string') {
-          const v = row[amountField];
-          if (typeof v === 'string') amount = parseFloat(v);
-          else if (typeof v === 'number') amount = v;
-        }
-        return { amount, type: cond.then.Type };
-      }
-    }
-    return { amount: undefined, type: undefined };
-  }
+ 
 
   // Helper: get value for any column using per-bank conditions
   function getValueForColumn(row: TransactionRow, bankId: string, columnName: string): string | number | undefined {
@@ -744,24 +691,43 @@ export default function SuperBankPage() {
           // If result is a field reference, resolve it
           if (typeof result === 'string' && row[result] !== undefined) {
             const v = row[result];
-            if (typeof v === 'string' || typeof v === 'number') return v;
+            if (typeof v === 'string' || typeof v === 'number') {
+              return v;
+            }
             return undefined;
           }
-          if (typeof result === 'string' || typeof result === 'number') return result;
+          if (typeof result === 'string' || typeof result === 'number') {
+            return result;
+          }
           return undefined;
         }
       }
     }
-    // Fallback: mapped field or raw value
+    // Robust fallback: check mapping, then raw value
     const mapping = bankMappings[bankId]?.mapping;
-    if (mapping && mapping[columnName] && row[mapping[columnName]]) {
+    // if (mapping && mapping[columnName]) {
+    //   console.log('Mapping fallback debug:', {
+    //     bankId,
+    //     columnName,
+    //     mappingField: mapping[columnName],
+    //     value: row[mapping[columnName]],
+    //     row
+    //   });
+    // }
+    if (mapping && mapping[columnName] && row[mapping[columnName]] !== undefined) {
       const v = row[mapping[columnName]];
-      if (typeof v === 'string' || typeof v === 'number') return v;
+      if (typeof v === 'string' || typeof v === 'number') {
+        return v;
+      }
       return undefined;
     }
-    // Otherwise, return raw value
+    if (row[columnName] !== undefined) {
     const v = row[columnName];
-    if (typeof v === 'string' || typeof v === 'number') return v;
+      if (typeof v === 'string' || typeof v === 'number') {
+        return v;
+      }
+      return undefined;
+    }
     return undefined;
   }
 
@@ -776,6 +742,87 @@ export default function SuperBankPage() {
         .catch(() => setUserEmail(null));
     }
   }, []);
+
+  useEffect(() => {
+    if (
+      transactions.length > 0 &&
+      Object.keys(bankMappings).length > 0 &&
+      superHeader.length > 0
+    ) {
+      console.log('Mapped Rows with Condition Values (after all data loaded):', mappedRowsWithConditions);
+    }
+  }, [transactions, bankMappings, superHeader, mappedRowsWithConditions]);
+
+  const handleHeaderSave = async () => {
+    setHeaderLoading(true);
+    setHeaderError(null);
+    setHeaderSuccess(null);
+    const headerArr = headerInputs.map(h => h.trim()).filter(Boolean);
+    if (!headerArr.length) {
+      setHeaderError("Header cannot be empty");
+      setHeaderLoading(false);
+      return;
+    }
+    // Ensure 'Tags' is included
+    if (!headerArr.includes('Tags')) {
+      headerArr.push('Tags');
+    }
+    try {
+      const res = await fetch("/api/bank-header", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bankName: "SUPER BANK", bankId: null, header: headerArr })
+      });
+      if (!res.ok) throw new Error("Failed to save header");
+      setSuperHeader(headerArr);
+      setHeaderSuccess("Header saved!");
+      setHeaderEditing(false);
+    } catch {
+      setHeaderError("Failed to save header");
+    } finally {
+      setHeaderLoading(false);
+    }
+  };
+
+  const handleHeaderInputChange = (idx: number, value: string) => {
+    setHeaderInputs(inputs => inputs.map((h, i) => i === idx ? value : h));
+  };
+  const handleAddHeaderInput = () => {
+    setHeaderInputs(inputs => [...inputs, ""]);
+  };
+  const handleRemoveHeaderInput = (idx: number) => {
+    setHeaderInputs(inputs => inputs.filter((_, i) => i !== idx));
+  };
+
+  // Helper to parse both dd/mm/yyyy and dd-mm-yy, and with - as separator
+  function parseDate(dateStr: string): Date {
+    if (!dateStr || typeof dateStr !== 'string') return new Date('1970-01-01');
+
+    // Regex to match dd/mm/yyyy or dd-mm-yyyy (and yy)
+    const match = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+
+    if (match) {
+      const day = match[1];
+      const month = match[2];
+      let year = match[3];
+
+      if (year.length === 2) {
+        year = '20' + year;
+      }
+
+      // Create date, note that the month is 0-indexed in JavaScript's Date constructor.
+      return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+    }
+    
+    // Fallback for ISO date strings or other formats recognized by new Date()
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      return d;
+    }
+
+    // Return a default date for invalid formats
+    return new Date('1970-01-01');
+  }
 
   return (
     <div className="min-h-screen py-4 sm:py-6 px-2 sm:px-4">
@@ -833,7 +880,29 @@ export default function SuperBankPage() {
                 <label className="block text-xs font-medium text-blue-700 mb-1">Edit Header Columns</label>
                 <div className="flex flex-wrap gap-2 sm:gap-3 items-center bg-white/70 p-2 sm:p-3 rounded border border-blue-100 shadow-sm">
                   {headerInputs.map((header, idx) => (
-                    <div key={idx} className="relative group flex-1 min-w-[120px]">
+                    <div
+                      key={idx}
+                      className={`relative group flex-1 min-w-[120px] ${dragOverIdx === idx ? 'ring-2 ring-blue-400' : ''}`}
+                      draggable
+                      onDragStart={() => setDraggedIdx(idx)}
+                      onDragOver={e => {
+                        e.preventDefault();
+                        setDragOverIdx(idx);
+                      }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        if (draggedIdx !== null) {
+                          const newOrder = reorder(headerInputs, draggedIdx, idx);
+                          setHeaderInputs(newOrder);
+                        }
+                        setDraggedIdx(null);
+                        setDragOverIdx(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedIdx(null);
+                        setDragOverIdx(null);
+                      }}
+                    >
                       <input
                         type="text"
                         value={header}
@@ -892,17 +961,15 @@ export default function SuperBankPage() {
         {/* Analytics summary above controls */}
         {filteredRows.length > 0 && (
           <AnalyticsSummary
-            totalTransactions={filteredRows.length}
             totalAmount={totalAmount}
-            totalCredit={totalCreditStr}
-            totalDebit={totalDebitStr}
+            totalCredit={totalCredit}
+            totalDebit={totalDebit}
+            totalTransactions={filteredRows.length}
             totalBanks={totalBanks}
             totalAccounts={totalAccounts}
+            totalTags={filteredTotalTags}
             tagged={tagged}
             untagged={untagged}
-            totalTags={filteredTotalTags}
-            showAmount={!!amountCol}
-            showTagStats={superHeader.some(h => h.toLowerCase() === 'tags')}
           />
         )}
         {/* Filter box below stats, wider on PC */}
@@ -983,7 +1050,10 @@ export default function SuperBankPage() {
             onReorderHeaders={handleReorderHeaders}
             transactions={transactions}
             bankMappings={bankMappings}
-            getValueForColumn={getValueForColumn}
+            getValueForColumn={(tx, bankId, sh) => {
+              const value = getValueForColumn(tx, bankId, sh);
+              return value;
+            }}
           />
         </div>
       </div>
