@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import Modal from './Modal';
 import Papa from 'papaparse';
+import toast from 'react-hot-toast';
+import {  FiColumns } from 'react-icons/fi';
 
 interface StatementPreviewModalProps {
   isOpen: boolean;
@@ -21,7 +23,7 @@ const SlicedPreviewModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
   data: string[][];
-  onSave: (duplicateCheckFields: string[]) => void;
+  onSave: (duplicateCheckFields: string[], previewData: string[][]) => void;
   saving: boolean;
   saveError: string | null;
   startRow: number;
@@ -32,12 +34,64 @@ const SlicedPreviewModal: React.FC<{
   useEffect(() => {
     if (data.length > 0) setSelectedFields(data[0].slice(0, 3));
   }, [data]);
+
+  // Delimit state and logic
+  const [delimitDialogOpen, setDelimitDialogOpen] = useState(false);
+  const [delimitColIdx, setDelimitColIdx] = useState<number | null>(null);
+  const [delimiter, setDelimiter] = useState<string>(' ');
+  const [newColNames, setNewColNames] = useState<string[]>(['Date', 'Time']);
+  const [delimitPreview, setDelimitPreview] = useState<string[][] | null>(null);
+  const [delimitError, setDelimitError] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<string[][]>(data);
+
+  const handleDelimitPreview = () => {
+    setDelimitError(null);
+    if (delimitColIdx === null || !delimiter) {
+      setDelimitError('Select a column and delimiter.');
+      return;
+    }
+    const header = [...previewData[0]];
+    const rows = previewData.slice(1);
+    const newRows = rows.map(row => {
+      const cell = row[delimitColIdx] || '';
+      let parts: string[];
+      if (delimiter === '\\s+' || (delimiter.startsWith('/') && delimiter.endsWith('/'))) {
+        let regex: RegExp;
+        if (delimiter === '\\s+') {
+          regex = /\s+/;
+        } else {
+          regex = new RegExp(delimiter.slice(1, -1));
+        }
+        parts = cell.split(regex);
+      } else {
+        parts = cell.split(delimiter);
+      }
+      const newParts = newColNames.map((_, i) => parts[i] || '');
+      const newRow = [...row];
+      newRow.splice(delimitColIdx, 1, ...newParts);
+      return newRow;
+    });
+    const newHeader = [...header];
+    newHeader.splice(delimitColIdx, 1, ...newColNames);
+    setDelimitPreview([newHeader, ...newRows]);
+  };
+
+  const handleDelimitSave = () => {
+    if (!delimitPreview) return;
+    setPreviewData(delimitPreview);
+    setDelimitDialogOpen(false);
+    setDelimitPreview(null);
+    setDelimitColIdx(null);
+    setNewColNames(['Date', 'Time']);
+    setDelimiter(' ');
+  };
+
   return (
-  <Modal isOpen={isOpen} onClose={onClose} title="Sliced Transactions Preview">
+    <Modal isOpen={isOpen} onClose={onClose} title="Sliced Transactions Preview">
       <div className="mb-2">
         <div className="font-semibold mb-1">Select fields to check for duplicate transactions:</div>
         <div className="flex flex-wrap gap-2 mb-2">
-          {data.length > 0 && data[0].map((header, idx) => (
+          {previewData.length > 0 && previewData[0].map((header, idx) => (
             <label key={header + '-' + idx} className="flex items-center gap-1 text-xs bg-gray-100 px-2 py-1 rounded cursor-pointer">
               <input
                 type="checkbox"
@@ -54,48 +108,117 @@ const SlicedPreviewModal: React.FC<{
             </label>
           ))}
         </div>
+        <button
+          className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs mb-2"
+          onClick={() => setDelimitDialogOpen(true)}
+          disabled={previewData.length === 0}
+          title="Delimit a column (e.g., split date/time)"
+        >
+          <FiColumns /> Delimit Column
+        </button>
       </div>
-    <div className="overflow-x-auto max-h-[70vh]">
-      <table className="min-w-full border text-sm">
-          {data.length > 0 && (
+      <div className="overflow-x-auto max-h-[70vh]">
+        <table className="min-w-full border text-sm">
+          {previewData.length > 0 && (
             <thead>
               <tr>
-                {data[0].map((cell, j) => (
+                {previewData[0].map((cell, j) => (
                   <th key={j} className="border px-2 py-1 font-bold bg-gray-100">{cell}</th>
                 ))}
               </tr>
             </thead>
           )}
-        <tbody>
-            {data.slice(1).map((row, i) => (
-            <tr key={i}>
-              {row.map((cell, j) => (
-                <td key={j} className="border px-2 py-1 whitespace-nowrap">{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-    <div className="flex justify-end mt-4 space-x-2">
-      <button
-        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          onClick={() => onSave(selectedFields)}
+          <tbody>
+            {previewData.slice(1).map((row, i) => (
+              <tr key={i}>
+                {row.map((cell, j) => (
+                  <td key={j} className="border px-2 py-1 whitespace-nowrap">{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end mt-4 space-x-2">
+        <button
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          onClick={() => onSave(selectedFields, previewData)}
           disabled={saving || selectedFields.length === 0}
-      >
-        {saving ? 'Saving...' : 'Save'}
-      </button>
-      <button
-        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-        onClick={onClose}
-        disabled={saving}
-      >
-        Cancel
-      </button>
-    </div>
-    {saveError && <div className="text-red-600 mt-2">{saveError}</div>}
-  </Modal>
-);
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+          onClick={onClose}
+          disabled={saving}
+        >
+          Cancel
+        </button>
+      </div>
+      {saveError && <div className="text-red-600 mt-2">{saveError}</div>}
+      {/* Delimit Dialog */}
+      {delimitDialogOpen && (
+        <Modal isOpen={delimitDialogOpen} onClose={() => setDelimitDialogOpen(false)} title="Delimit Column" maxWidthClass="max-w-sm">
+          <div className="mb-2">
+            <label className="block mb-1 font-medium text-sm">Select column to delimit:</label>
+            <select
+              className="w-full border rounded px-2 py-1 mb-2"
+              value={delimitColIdx ?? ''}
+              onChange={e => setDelimitColIdx(Number(e.target.value))}
+            >
+              <option value="" disabled>Select column</option>
+              {previewData[0].map((col, idx) => (
+                <option key={col + idx} value={idx}>{col}</option>
+              ))}
+            </select>
+            <label className="block mb-1 font-medium text-sm">Delimiter:</label>
+            <input
+              className="w-full border rounded px-2 py-1 mb-2"
+              value={delimiter}
+              onChange={e => setDelimiter(e.target.value)}
+              placeholder="e.g. space, /, -"
+            />
+            <label className="block mb-1 font-medium text-sm">New column names (comma separated):</label>
+            <input
+              className="w-full border rounded px-2 py-1 mb-2"
+              value={newColNames.join(',')}
+              onChange={e => setNewColNames(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+              placeholder="e.g. Date,Time"
+            />
+            <button
+              className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
+              onClick={handleDelimitPreview}
+              type="button"
+            >Preview</button>
+            {delimitError && <div className="text-red-600 mt-1 text-xs">{delimitError}</div>}
+          </div>
+          {delimitPreview && (
+            <div className="overflow-x-auto max-h-40 border rounded mb-2">
+              <table className="min-w-full border text-xs">
+                <tbody>
+                  {delimitPreview.slice(0, 6).map((row, i) => (
+                    <tr key={i}>{row.map((cell, j) => <td key={j} className="border px-2 py-1">{cell}</td>)}</tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="text-xs text-gray-500">Previewing first 5 rows.</div>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-2">
+            <button
+              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+              onClick={handleDelimitSave}
+              disabled={!delimitPreview}
+            >Save</button>
+            <button
+              className="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-xs"
+              onClick={() => setDelimitDialogOpen(false)}
+            >Cancel</button>
+          </div>
+        </Modal>
+      )}
+    </Modal>
+  );
 };
 
 const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, onClose, s3FileUrl, statementId, bankId, accountId, fileName }) => {
@@ -177,35 +300,23 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
     setSaveError(null);
   };
 
-  const handleSave = async (fields?: string[]) => {
+  const handleSave = async (fields?: string[], previewDataOverride?: string[][]) => {
     if (startRow === null || endRow === null || headerRow === null || !s3FileUrl || !statementId || !bankId || !accountId) return;
     setSaving(true);
     setSaveError(null);
     try {
-      // Remove 'Serial No' column from header and all rows (case-insensitive, trims whitespace)
-      // const baseHeader = data[headerRow];
-      // const serialIdx = baseHeader.findIndex(h => h.trim().toLowerCase() === 'serial no' || h.trim().toLowerCase() === 'sl. no.' || h.trim().toLowerCase() === 'sl. no' || h.trim().toLowerCase() === 's.no' || h.trim().toLowerCase() === 's. no');
-      // let filteredHeader = baseHeader;
-      // let filteredRows = data.slice(startRow, endRow + 1);
-      // if (serialIdx !== -1) {
-      //   filteredHeader = baseHeader.filter((_, i) => i !== serialIdx);
-      //   filteredRows = filteredRows.map(row => row.filter((_, i) => i !== serialIdx));
-      // }
-      // Add columns for accountId, accountName, bankId, bankName
-      const baseHeader = data[headerRow];
+      const baseHeader = (previewDataOverride || data)[0];
       const filteredHeader = baseHeader;
-      const filteredRows = data.slice(startRow, endRow + 1);
+      const filteredRows = (previewDataOverride || data).slice(1);
       const extraCols = ["accountId", "accountName", "bankId", "bankName"];
       const header = [...filteredHeader, ...extraCols];
       const rows = filteredRows.map(row => [...row, accountId, accountName, bankId, bankName]);
       const finalSliced = [header, ...rows];
       const csv = Papa.unparse(finalSliced);
       const dupFields = (fields || duplicateCheckFields).map(f => {
-        // f is header + '-' + idx, so split and take the header
         const dashIdx = f.lastIndexOf('-');
         return dashIdx !== -1 ? f.slice(0, dashIdx) : f;
       });
-      // Call API to save the sliced transaction
       const res = await fetch('/api/transaction/slice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -235,7 +346,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
       setHeaderRow(null);
       setSelectionStep('header');
       setDuplicateCheckFields([]);
-      alert('Transaction slice saved successfully!');
+      toast.success('Transaction slice saved successfully!');
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save transaction slice');
     } finally {
@@ -248,6 +359,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
     setSelectionStep('transactions');
   };
 
+  
   return (
     <>
       <Modal isOpen={isOpen} onClose={onClose} title="Statement Preview">
@@ -418,7 +530,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
           onClose={() => setShowSliceModal(false)}
           data={[data[headerRow], ...data.slice(startRow, endRow + 1)]}
           startRow={startRow}
-          onSave={fields => { setDuplicateCheckFields(fields); handleSave(fields); }}
+          onSave={(fields, previewData) => { setDuplicateCheckFields(fields); handleSave(fields, previewData); }}
           saving={saving}
           saveError={saveError}
         />

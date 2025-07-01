@@ -143,10 +143,16 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
     setSaveError(null);
     try {
       // Save to backend (update DynamoDB and S3 if needed)
+      // Convert tags to IDs for storage
+      const dataWithTagIds = data.map(row => ({
+        ...row,
+        tags: Array.isArray(row.tags) ? row.tags.map(tag => tag.id) : row.tags
+      }));
+      
       const res = await fetch('/api/transaction/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionId, transactionData: data }),
+        body: JSON.stringify({ transactionId, transactionData: dataWithTagIds }),
       });
       if (!res.ok) {
         const err = await res.json();

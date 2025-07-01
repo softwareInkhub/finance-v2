@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Modal from '../../components/Modals/Modal';
-import { RiAccountPinCircleLine, RiAddLine, RiPriceTag3Line, RiEdit2Line, RiCloseLine } from 'react-icons/ri';
+import { RiAccountPinCircleLine, RiAddLine, RiEdit2Line, RiDeleteBin6Line } from 'react-icons/ri';
 import HeaderEditor from '../../components/HeaderEditor';
+import ConfirmDeleteModal from '../../components/Modals/ConfirmDeleteModal';
 
 interface Account {
   id: string;
@@ -55,6 +56,7 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
   const [mappingError, setMappingError] = useState<string | null>(null);
   const [mappingSuccess, setMappingSuccess] = useState<string | null>(null);
   const [newCond, setNewCond] = useState({ ifField: '', ifOp: '', ifValue: '', then: [{ field: '', value: '' }] });
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; account: Account | null; loading: boolean }>({ open: false, account: null, loading: false });
 
   useEffect(() => {
     if (!bankId) {
@@ -209,21 +211,30 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
     }
   };
 
-  const handleDeleteAccount = async (accountId: string) => {
-    if (!confirm('Are you sure you want to delete this account?')) return;
+  const handleDeleteAccount = (accountId: string) => {
+    const account = accounts.find(acc => acc.id === accountId);
+    if (!account) return;
+    setDeleteModal({ open: true, account, loading: false });
+  };
 
+  const confirmDeleteAccount = async () => {
+    if (!deleteModal.account) return;
+    setDeleteModal(prev => ({ ...prev, loading: true }));
+    const accountId = deleteModal.account.id;
     try {
       const response = await fetch(`/api/account/${accountId}`, {
         method: 'DELETE',
       });
-
       if (!response.ok) {
-        throw new Error('Failed to delete account');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete account');
       }
-
       setAccounts(accounts.filter(acc => acc.id !== accountId));
+      setDeleteModal({ open: false, account: null, loading: false });
+      // Optionally show a toast here
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
+      setDeleteModal(prev => ({ ...prev, loading: false }));
     }
   };
 
@@ -655,54 +666,56 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
                     );
                   }
                 }}
-                className="cursor-pointer relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden"
+                className="cursor-pointer relative bg-white/70 backdrop-blur-lg p-3 sm:p-4 rounded-lg shadow border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden min-w-[220px] max-w-xs"
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-50 rounded-lg">
-                      <RiAccountPinCircleLine className="text-blue-500 text-xl" />
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-blue-50 rounded-lg">
+                      <RiAccountPinCircleLine className="text-blue-500 text-lg" />
                     </div>
                     <div>
-                      <h3 className="font-medium text-gray-900">{account.accountHolderName}</h3>
-                      <p className="text-sm text-gray-500">Account Number: {account.accountNumber}</p>
+                      <h3 className="font-medium text-gray-900 text-base leading-tight">{account.accountHolderName}</h3>
+                      <p className="text-xs text-gray-500">Account Number: {account.accountNumber}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditAccount(account);
-                    }}
-                    className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <RiEdit2Line className="text-gray-400 hover:text-gray-600" />
-                  </button>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {account.tags.map((tag, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
+                  <div className="flex gap-1 absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditAccount(account);
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                      title="Edit Account"
                     >
-                      <RiPriceTag3Line className="mr-1" />
-                      {tag}
-                    </span>
-                  ))}
+                      <RiEdit2Line className="text-gray-400 hover:text-gray-600 text-base" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteAccount(account.id);
+                      }}
+                      className="p-1 hover:bg-red-100 rounded-lg transition-colors"
+                      title="Delete Account"
+                    >
+                      <RiDeleteBin6Line className="text-red-400 hover:text-red-600 text-base" />
+                    </button>
+                  </div>
                 </div>
-
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <p className="text-sm text-gray-500">IFSC: {account.ifscCode}</p>
+                {account.tags && account.tags.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {account.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 border-t border-gray-100 pt-2">
+                  <p className="text-xs text-gray-500">IFSC: {account.ifscCode}</p>
                 </div>
-
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteAccount(account.id);
-                  }}
-                  className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <RiCloseLine className="text-lg" />
-                </button>
               </div>
             ))
           )}
@@ -787,6 +800,21 @@ export default function AccountsClient({ bankId, onAccountClick }: AccountsClien
           </form>
         </Modal>
       </div>
+      <ConfirmDeleteModal
+        isOpen={deleteModal.open}
+        onClose={() => setDeleteModal({ open: false, account: null, loading: false })}
+        onConfirm={confirmDeleteAccount}
+        itemName={deleteModal.account?.accountHolderName || ''}
+        itemType="account"
+        confirmLabel="Delete Account"
+        description={
+          'WARNING: This will also delete:\n' +
+          '• ALL related transactions from this account\n' +
+          '• ALL statement files uploaded for this account\n\n' +
+          'This action cannot be undone.'
+        }
+        loading={deleteModal.loading}
+      />
     </div>
   );
 } 

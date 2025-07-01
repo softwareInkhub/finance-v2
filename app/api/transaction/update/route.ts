@@ -23,9 +23,13 @@ export async function POST(request: Request) {
       }
     }
     if (tags) {
+      // Extract only tag IDs from the tags array
+      const tagIds = Array.isArray(tags) 
+        ? tags.map(tag => typeof tag === 'string' ? tag : tag.id).filter(Boolean)
+        : [];
       updateFields.push('tags');
       exprAttrNames['#tags'] = 'tags';
-      exprAttrValues[':tags'] = tags;
+      exprAttrValues[':tags'] = tagIds;
     }
     const updateExpr = 'SET ' + updateFields.map(f => `#${f} = :${f}`).join(', ');
     await docClient.send(

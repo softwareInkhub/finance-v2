@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { RiEdit2Line } from 'react-icons/ri';
+import { FiDownload } from 'react-icons/fi';
 
 import AnalyticsSummary from '../../components/AnalyticsSummary';
 import TransactionFilterBar from '../../components/TransactionFilterBar';
@@ -8,6 +9,7 @@ import TagFilterPills from '../../components/TagFilterPills';
 import TaggingControls from '../../components/TaggingControls';
 import TransactionTable from '../../components/TransactionTable';
 import { Transaction, TransactionRow, Tag } from '../../types/transaction';
+import Modal from '../../components/Modals/Modal';
 
 interface Condition {
   if: {
@@ -28,6 +30,169 @@ interface BankHeaderMapping {
   conditions?: Condition[];
 }
 
+function SuperBankReportModal({ isOpen, onClose, transactions, totalBanks, totalAccounts, bankIdNameMap, tagFilters }: {
+  isOpen: boolean;
+  onClose: () => void;
+  transactions: (Transaction & { AmountRaw?: number; 'Dr./Cr.'?: string })[];
+  totalBanks: number;
+  totalAccounts: number;
+  bankIdNameMap: { [id: string]: string };
+  tagFilters: string[];
+}) {
+  if (Object.keys(bankIdNameMap).length === 0) {
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} title="Super Bank Report">
+        <div className="p-8 text-center text-gray-500 text-lg">Loading bank names...</div>
+      </Modal>
+    );
+  }
+  // Compute per-tag or per-bank stats
+  type Stat = {
+    label: string;
+    totalTransactions: number;
+    totalAmount: number;
+    totalCredit: number;
+    totalDebit: number;
+    tagged: number;
+    untagged: number;
+  };
+  let statsArr: Stat[] = [];
+  if (tagFilters && tagFilters.length > 0) {
+    // Group by tag
+    statsArr = tagFilters.map(tagName => {
+      const txs = transactions.filter(tx => Array.isArray(tx.tags) && tx.tags.some(t => t.name === tagName));
+      let totalAmount = 0, totalCredit = 0, totalDebit = 0, tagged = 0, untagged = 0;
+      txs.forEach(tx => {
+        const amount = typeof (tx as Transaction & { AmountRaw?: number }).AmountRaw === 'number' ? (tx as Transaction & { AmountRaw?: number }).AmountRaw : 0;
+        totalAmount += amount || 0;
+        const crdr = ((tx as Transaction & { 'Dr./Cr.'?: string })['Dr./Cr.'] || '').toString().trim().toUpperCase();
+        if (crdr === 'CR') totalCredit += Math.abs(amount || 0);
+        else if (crdr === 'DR') totalDebit += Math.abs(amount || 0);
+        const tags = (tx as Transaction).tags;
+        if (Array.isArray(tags) && tags.length > 0) tagged++;
+        else untagged++;
+      });
+      return {
+        label: tagName,
+        totalTransactions: txs.length,
+        totalAmount,
+        totalCredit,
+        totalDebit,
+        tagged,
+        untagged,
+      };
+    });
+  } else {
+    // Group by bank
+    const bankStats: { [bankId: string]: Stat } = {};
+    transactions.forEach((tx: Transaction) => {
+      const bankId = tx.bankId;
+      const label = bankIdNameMap[bankId] || 'Unknown Bank';
+      if (!bankStats[bankId]) {
+        bankStats[bankId] = {
+          label,
+          totalTransactions: 0,
+          totalAmount: 0,
+          totalCredit: 0,
+          totalDebit: 0,
+          tagged: 0,
+          untagged: 0,
+        };
+      }
+      const amount = typeof (tx as Transaction & { AmountRaw?: number }).AmountRaw === 'number' ? (tx as Transaction & { AmountRaw?: number }).AmountRaw : 0;
+      bankStats[bankId].totalTransactions++;
+      bankStats[bankId].totalAmount += amount || 0;
+      const crdr = ((tx as Transaction & { 'Dr./Cr.'?: string })['Dr./Cr.'] || '').toString().trim().toUpperCase();
+      if (crdr === 'CR') bankStats[bankId].totalCredit += Math.abs(amount || 0);
+      else if (crdr === 'DR') bankStats[bankId].totalDebit += Math.abs(amount || 0);
+      const tags = (tx as Transaction).tags;
+      if (Array.isArray(tags) && tags.length > 0) bankStats[bankId].tagged++;
+      else bankStats[bankId].untagged++;
+    });
+    statsArr = Object.values(bankStats);
+  }
+  // Super bank stats
+  const superTotalTransactions = transactions.length;
+  const superTotalAmount = statsArr.reduce((sum, s) => sum + s.totalAmount, 0);
+  const superTotalCredit = statsArr.reduce((sum, s) => sum + s.totalCredit, 0);
+  const superTotalDebit = statsArr.reduce((sum, s) => sum + s.totalDebit, 0);
+  const superTagged = statsArr.reduce((sum, s) => sum + s.tagged, 0);
+  const superUntagged = statsArr.reduce((sum, s) => sum + s.untagged, 0);
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Super Bank Report" maxWidthClass="max-w-2xl">
+      <div className="mb-6">
+        <h3 className="text-lg font-bold mb-2 text-blue-700">Per-Bank Summary</h3>
+        {tagFilters && tagFilters.length > 0 && (
+          <div className="text-xs text-gray-500 mb-2">
+            Note: If a transaction has multiple selected tags, it is counted in each relevant tag row.
+          </div>
+        )}
+        <div className="overflow-x-auto">
+          <table className="min-w-full border text-sm">
+            <thead>
+              <tr className="bg-blue-50">
+                <th className="border px-3 py-2">{tagFilters && tagFilters.length > 0 ? 'Tag' : 'Bank'}</th>
+                <th className="border px-3 py-2">Total Txns</th>
+                <th className="border px-3 py-2">Total Amount</th>
+                <th className="border px-3 py-2">Credit</th>
+                <th className="border px-3 py-2">Debit</th>
+                <th className="border px-3 py-2">Tagged</th>
+                <th className="border px-3 py-2">Untagged</th>
+              </tr>
+            </thead>
+            <tbody>
+              {statsArr.map((s, i) => (
+                <tr key={s.label + i}>
+                  <td className="border px-3 py-2 font-semibold">{s.label}</td>
+                  <td className="border px-3 py-2 text-center">{s.totalTransactions}</td>
+                  <td className="border px-3 py-2 text-right">{s.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="border px-3 py-2 text-right text-green-700">{s.totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="border px-3 py-2 text-right text-red-700">{s.totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="border px-3 py-2 text-center text-blue-700">{s.tagged}</td>
+                  <td className="border px-3 py-2 text-center text-gray-500">{s.untagged}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="mb-2">
+        <h3 className="text-lg font-bold mb-2 text-purple-700">Super Bank Summary</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-blue-50 rounded p-3">
+            <div className="text-xs text-gray-500">Total Transactions</div>
+            <div className="text-xl font-bold text-blue-700">{superTotalTransactions}</div>
+          </div>
+          <div className="bg-green-50 rounded p-3">
+            <div className="text-xs text-gray-500">Total Amount</div>
+            <div className="text-xl font-bold text-green-700">{superTotalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div className="bg-green-50 rounded p-3">
+            <div className="text-xs text-gray-500">Total Credit</div>
+            <div className="text-xl font-bold text-green-700">{superTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div className="bg-red-50 rounded p-3">
+            <div className="text-xs text-gray-500">Total Debit</div>
+            <div className="text-xl font-bold text-red-700">{superTotalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div className="bg-yellow-50 rounded p-3">
+            <div className="text-xs text-gray-500">Total Banks</div>
+            <div className="text-xl font-bold text-yellow-700">{totalBanks}</div>
+          </div>
+          <div className="bg-purple-50 rounded p-3">
+            <div className="text-xs text-gray-500">Total Accounts</div>
+            <div className="text-xl font-bold text-purple-700">{totalAccounts}</div>
+          </div>
+          <div className="bg-blue-50 rounded p-3 col-span-2">
+            <div className="text-xs text-gray-500">Tagged / Untagged Transactions</div>
+            <div className="text-lg font-bold text-blue-700">{superTagged} <span className="text-gray-400">/</span> {superUntagged}</div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function SuperBankPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +200,7 @@ export default function SuperBankPage() {
 
   // Super Bank header state
   const [superHeader, setSuperHeader] = useState<string[]>([]);
-  const [bankMappings, setBankMappings] = useState<{ [bankId: string]: BankHeaderMapping }>({});
+  const [bankMappings, setBankMappings] = useState<{ [bankId: string]: BankHeaderMapping & { bankName: string } }>({});
   const [headerInputs, setHeaderInputs] = useState<string[]>([]);
   const [headerLoading, setHeaderLoading] = useState(false);
   const [headerError, setHeaderError] = useState<string | null>(null);
@@ -44,7 +209,7 @@ export default function SuperBankPage() {
 
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: "", to: "" });
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
 
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -74,6 +239,15 @@ export default function SuperBankPage() {
   // Drag-and-drop state for header editing
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const [reportOpen, setReportOpen] = useState(false);
+
+  const [bankIdNameMap, setBankIdNameMap] = useState<{ [id: string]: string }>({});
+
+  // Helper function to extract tag IDs for API calls
+  const extractTagIds = (tags: Tag[]): string[] => {
+    return tags.map(tag => tag.id);
+  };
 
   // Helper to reorder array
   const reorder = (arr: string[], from: number, to: number) => {
@@ -120,18 +294,24 @@ export default function SuperBankPage() {
     fetch(`/api/bank`)
       .then(res => res.json())
       .then(async (banks: { id: string; bankName: string }[]) => {
+        console.log('BANKS FETCHED:', banks); // Debug log
         if (!Array.isArray(banks)) return;
-        const mappings: { [bankId: string]: BankHeaderMapping } = {};
+        const mappings: { [bankId: string]: BankHeaderMapping & { bankName: string } } = {};
+        const idNameMap: { [id: string]: string } = {};
         await Promise.all(
           banks.map(async (bank) => {
             const res = await fetch(`/api/bank-header?bankName=${encodeURIComponent(bank.bankName)}`);
             const data = await res.json();
             if (data && data.mapping) {
-              mappings[bank.id] = data;
+              mappings[bank.id] = { ...data, bankName: bank.bankName };
+            } else {
+              mappings[bank.id] = { id: bank.id, bankId: bank.id, header: [], bankName: bank.bankName };
             }
+            idNameMap[bank.id] = bank.bankName;
           })
         );
         setBankMappings(mappings);
+        setBankIdNameMap(idNameMap);
       });
   }, []);
 
@@ -234,7 +414,7 @@ export default function SuperBankPage() {
     await fetch('/api/transaction/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactionId: tx.id, tags })
+      body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags) })
     });
     setPendingTag(null);
     setTagCreateMsg("Tag applied to transaction!");
@@ -258,18 +438,18 @@ export default function SuperBankPage() {
     if (!tagObj) return setPendingTag(null);
     await Promise.all(transactions.map(async (tx) => {
       // Check all primitive fields except arrays/objects and 'tags' for case-sensitive match
-      const hasMatch = Object.entries(tx).some(([key, val]) =>
-        key !== 'tags' &&
-        ((typeof val === 'string' && val.includes(selectionText)) ||
-         (typeof val === 'number' && String(val).includes(selectionText)))
-      );
-      if (hasMatch) {
-        const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
-        if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
+              const hasMatch = Object.entries(tx).some(([key, val]) =>
+          key !== 'tags' &&
+          ((typeof val === 'string' && val.includes(selectionText)) ||
+           (typeof val === 'number' && String(val).includes(selectionText)))
+        );
+        if (hasMatch) {
+          const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
+          if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
         await fetch('/api/transaction/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transactionId: tx.id, tags })
+          body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags) })
         });
       }
     }));
@@ -338,7 +518,12 @@ export default function SuperBankPage() {
     Object.entries(mapping).forEach(([bankHeader, superHeader]) => {
       if (superHeader) reverseMap[superHeader] = bankHeader;
     });
-    const mappedRow: Record<string, string | number | Tag[] | undefined> = {};
+    const mappedRow: Record<string, string | number | Tag[] | undefined> = {
+      id: tx.id,
+      statementId: tx.statementId,
+      bankId: tx.bankId,
+      accountId: tx.accountId,
+    };
     superHeader.forEach(sh => {
       if (sh === 'Tags') {
         const bankTagCol = Object.keys(tx).find(
@@ -365,9 +550,12 @@ export default function SuperBankPage() {
       }
     });
     mappedRow.id = tx.id;
+    mappedRow.statementId = tx.statementId;
+    mappedRow.bankId = tx.bankId;
+    mappedRow.accountId = tx.accountId;
     // Apply conditions for Dr./Cr.
     mappedRow['Dr./Cr.'] = getValueForColumn(tx, String(tx.bankId), 'Dr./Cr.');
-    return mappedRow;
+    return mappedRow as Transaction & { AmountRaw?: number; 'Dr./Cr.'?: string };
   });
 
   // Tag filter logic: filter mappedRowsWithConditions by selected tags first
@@ -431,29 +619,31 @@ export default function SuperBankPage() {
   });
 
   // Handle row selection
-  const handleRowSelect = (idx: number) => {
-    setSelectedRows((prev) => {
+  const handleRowSelect = (id: string) => {
+    setSelectedRows(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(idx)) newSet.delete(idx);
-      else newSet.add(idx);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
       return newSet;
     });
   };
   const handleSelectAll = () => {
     if (selectAll) setSelectedRows(new Set());
-    else setSelectedRows(new Set(filteredRows.map((_, i) => i)));
+    else setSelectedRows(new Set(filteredRows.map(tx => tx.id)));
     setSelectAll(!selectAll);
   };
   useEffect(() => {
     setSelectAll(
-      filteredRows.length > 0 && filteredRows.every((_, i) => selectedRows.has(i))
+      filteredRows.length > 0 && filteredRows.every((_, i) => selectedRows.has(filteredRows[i].id))
     );
   }, [selectedRows, filteredRows]);
 
   // Download selected as CSV
   const handleDownload = () => {
     if (selectedRows.size === 0) return;
-    const rows = Array.from(selectedRows).map((i) => filteredRows[i]);
+    const rows = Array.from(selectedRows)
+      .map((id) => filteredRows.find(tx => tx.id === id))
+      .filter((row): row is typeof filteredRows[number] => !!row); // filter out undefined
     const csv = [superHeader.join(",")].concat(
       rows.map((row) =>
         superHeader.map((sh) => {
@@ -482,27 +672,16 @@ export default function SuperBankPage() {
     if (!selectedTagId) { setTagging(false); return; }
     const tagObj = allTags.find(t => t.id === selectedTagId);
     if (!tagObj) { setTagging(false); return; }
-    console.log('Adding tag:', selectedTagId, tagObj);
-    console.log('Selected rows:', Array.from(selectedRows));
     try {
-      await Promise.all(Array.from(selectedRows).map(async (idx) => {
-        const row = filteredRows[idx];
-        if (!row || !row.id) {
-          console.log('No transaction id for row:', row);
-          return;
-        }
-        const tx = transactions.find(t => t.id === row.id);
-        if (!tx) {
-          console.log('No matching transaction for id:', row.id);
-          return;
-        }
+      await Promise.all(Array.from(selectedRows).map(async (id) => {
+        const tx = transactions.find(t => t.id === id);
+        if (!tx) return;
         const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
         if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
-        console.log('Updating transaction:', tx.id, 'with tags:', tags);
         await fetch('/api/transaction/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transactionId: tx.id, tags })
+          body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags) })
         });
       }));
       setTagSuccess('Tag added!');
@@ -519,8 +698,7 @@ export default function SuperBankPage() {
         .catch(() => setError("Failed to fetch transactions"))
         .finally(() => setLoading(false));
     } catch (e) {
-      setTagError('Failed to add tag');
-      console.log('Error adding tag:', e);
+      setTagError(e instanceof Error ? e.message : 'Failed to add tag');
     } finally {
       setTagging(false);
     }
@@ -545,7 +723,7 @@ export default function SuperBankPage() {
     await fetch('/api/transaction/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactionId: tx.id, tags })
+      body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags) })
     });
     setTagCreateMsg('Tag removed!');
     setTimeout(() => setTagCreateMsg(null), 1500);
@@ -584,7 +762,6 @@ export default function SuperBankPage() {
   });
   if (!isFinite(totalCredit)) totalCredit = 0;
   if (!isFinite(totalDebit)) totalDebit = 0;
-  console.log('CREDIT/DEBIT DEBUG', { totalCredit, totalDebit, filteredRows });
 
   let tagged = 0, untagged = 0;
   filteredRows.forEach(row => {
@@ -638,11 +815,6 @@ export default function SuperBankPage() {
   const handleTagDeleted = () => {
     // Implementation of handleTagDeleted function
   };
-
-  // Helper: get conditions for a bankId
- 
-
-  // Helper: evaluate conditions for a row and bankId
  
 
   // Helper: get value for any column using per-bank conditions
@@ -824,6 +996,35 @@ export default function SuperBankPage() {
     return new Date('1970-01-01');
   }
 
+  useEffect(() => {
+    console.log('BANKS:', bankIdNameMap);
+  }, [bankIdNameMap]);
+
+  // Add this handler in SuperBankPage
+  const handleCreateTag = async (name: string) => {
+    const trimmed = name.trim().toLowerCase();
+    // Check for duplicate (case-insensitive, trimmed)
+    const existing = allTags.find(tag => tag.name.trim().toLowerCase() === trimmed);
+    if (existing) {
+      setSelectedTagId(existing.id);
+      setTimeout(() => handleAddTag(), 0);
+      return existing.id;
+    }
+    // Create tag in backend
+    const userId = localStorage.getItem('userId');
+    const res = await fetch('/api/tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, userId, color: '#60a5fa' }) // default blue
+    });
+    if (!res.ok) throw new Error('Failed to create tag');
+    const tag = await res.json();
+    setAllTags(prev => [...prev, tag]);
+    setSelectedTagId(tag.id);
+    setTimeout(() => handleAddTag(), 0);
+    return tag.id;
+  };
+
   return (
     <div className="min-h-screen py-4 sm:py-6 px-2 sm:px-4">
       <div className="max-w-full sm:max-w-[75%] mx-auto">
@@ -997,16 +1198,17 @@ export default function SuperBankPage() {
           tagStats={filteredTagStats}
         />
         {/* Tagging controls above table */}
-        {selectedRows.size > 0 && (
+        {sortedAndFilteredRows.filter(tx => selectedRows.has(tx.id)).length > 0 && (
           <TaggingControls
             allTags={allTags}
             selectedTagId={selectedTagId}
             onTagChange={setSelectedTagId}
             onAddTag={handleAddTag}
-            selectedCount={selectedRows.size}
+            selectedCount={sortedAndFilteredRows.filter(tx => selectedRows.has(tx.id)).length}
             tagging={tagging}
             tagError={tagError}
             tagSuccess={tagSuccess}
+            onCreateTag={handleCreateTag}
           />
         )}
         {/* Table and selection logic */}
@@ -1040,10 +1242,13 @@ export default function SuperBankPage() {
           <TransactionTable
             rows={sortedAndFilteredRows}
             headers={superHeader}
-            selectedRows={new Set(filteredRows.map((_, idx) => selectedRows.has(idx) ? idx : -1).filter(i => i !== -1))}
-            selectAll={selectAll}
-            onRowSelect={handleRowSelect}
+            selectedRows={new Set(sortedAndFilteredRows.map((tx, idx) => selectedRows.has(tx.id) ? idx : -1).filter(i => i !== -1))}
+            onRowSelect={idx => {
+              const tx = sortedAndFilteredRows[idx];
+              if (tx) handleRowSelect(tx.id);
+            }}
             onSelectAll={handleSelectAll}
+            selectAll={selectAll}
             loading={loading}
             error={error}
             onRemoveTag={handleRemoveTag}
@@ -1057,6 +1262,24 @@ export default function SuperBankPage() {
           />
         </div>
       </div>
+      {/* Floating Download Report Button */}
+      <button
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 shadow-lg flex items-center justify-center text-white text-3xl transition-all"
+        title="Download Report"
+        style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.15)' }}
+        onClick={() => setReportOpen(true)}
+      >
+        <FiDownload />
+      </button>
+      <SuperBankReportModal
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        transactions={filteredRows}
+        totalBanks={totalBanks}
+        totalAccounts={totalAccounts}
+        bankIdNameMap={bankIdNameMap}
+        tagFilters={tagFilters}
+      />
     </div>
   );
 } 
