@@ -11,6 +11,8 @@ import AnalyticsSummary from '../../components/AnalyticsSummary';
 import TransactionFilterBar from '../../components/TransactionFilterBar';
 import TagFilterPills from '../../components/TagFilterPills';
 import React from 'react';
+import ConfirmDeleteModal from '../../components/Modals/ConfirmDeleteModal';
+import { Toaster, toast } from 'react-hot-toast';
 
 interface Statement {
   id: string;
@@ -81,6 +83,14 @@ function StatementsContent() {
   const [tagCreateMsg, setTagCreateMsg] = useState<string | null>(null);
   const [pendingTag, setPendingTag] = useState<{ tagName: string; rowIdx: number; selectionText: string } | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+
+  const [deleteModal, setDeleteModal] = useState<{
+    open: boolean;
+    statementId?: string;
+    s3FileUrl?: string;
+    fileName?: string;
+  }>({ open: false });
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const fetchStatements = async () => {
@@ -212,7 +222,7 @@ function StatementsContent() {
     await fetch('/api/transaction/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactionId: tx.id, tags })
+      body: JSON.stringify({ transactionId: tx.id, tags: tags.map(tag => tag.id) })
     });
     setPendingTag(null);
     setTagCreateMsg("Tag applied to transaction!");
@@ -249,7 +259,7 @@ function StatementsContent() {
         await fetch('/api/transaction/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transactionId: tx.id, tags })
+          body: JSON.stringify({ transactionId: tx.id, tags: tags.map(tag => tag.id) })
         });
       }
     }));
@@ -286,6 +296,7 @@ function StatementsContent() {
     if (!file) {
       setError("Please select a CSV file.");
       setIsUploading(false);
+      toast.error("Please select a CSV file.");
       return;
     }
     try {
@@ -302,6 +313,7 @@ function StatementsContent() {
       });
       if (!res.ok) {
         const errorData = await res.json();
+        toast.error(errorData.error || 'Failed to upload statement');
         throw new Error(errorData.error || 'Failed to upload statement');
       }
       // Refresh statement list
@@ -311,24 +323,52 @@ function StatementsContent() {
       setFileName('');
       setUploadTags('');
       if (fileInputRef.current) fileInputRef.current.value = "";
+      toast.success('File uploaded successfully!');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload statement');
+      toast.error(err instanceof Error ? err.message : 'Failed to upload statement');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleDeleteStatement = async (statementId: string, s3FileUrl: string) => {
-    if (!window.confirm('Are you sure you want to delete this statement?')) return;
-    const res = await fetch('/api/statement/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ statementId, s3FileUrl }),
+  const handleDeleteStatement = (statementId: string, s3FileUrl: string) => {
+    const statement = statements.find(s => s.id === statementId);
+    setDeleteModal({
+      open: true,
+      statementId,
+      s3FileUrl,
+      fileName: statement?.fileName || 'this file',
     });
-    if (res.ok) {
-      setStatements(prev => prev.filter(s => s.id !== statementId));
-    } else {
-      alert('Failed to delete statement');
+  };
+
+  const confirmDeleteStatement = async () => {
+    const { statementId, s3FileUrl, fileName } = deleteModal;
+    if (!statementId || !s3FileUrl) return;
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/statement/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statementId, s3FileUrl }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setStatements(prev => prev.filter(s => s.id !== statementId));
+        toast.success(
+          result.deletedTransactions > 0
+            ? `Deleted "${fileName}" and ${result.deletedTransactions} related transaction(s).`
+            : `Deleted "${fileName}".`
+        );
+      } else {
+        const errorData = await res.json();
+        toast.error(`Failed to delete: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete. Please try again.');
+    } finally {
+      setDeleting(false);
+      setDeleteModal({ open: false });
     }
   };
 
@@ -369,7 +409,7 @@ function StatementsContent() {
         await fetch('/api/transaction/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transactionId: id, transactionData: { tags } })
+          body: JSON.stringify({ transactionId: id, tags: tags.map(tag => tag.id) })
         });
       }));
       setTagSuccess('Tag added!');
@@ -415,25 +455,38 @@ function StatementsContent() {
     return true;
   });
 
-  // Helper to parse both dd/mm/yyyy and dd/mm/yy
+  // Helper to robustly parse dd/mm/yyyy, dd/mm/yy, dd-mm-yyyy, dd-mm-yy
   function parseDate(dateStr: string): Date {
-    if (!dateStr) return new Date('1970-01-01');
-    const parts = dateStr.split('/');
-    if (parts.length === 3) {
-      const [dd, mm, origYyyy] = parts;
-      let yyyy = origYyyy;
-      if (yyyy.length === 2) {
-        yyyy = '20' + yyyy;
-      }
-      return new Date(`${yyyy}-${mm}-${dd}`);
+    if (!dateStr || typeof dateStr !== 'string') return new Date('1970-01-01');
+    // Match dd/mm/yyyy, dd-mm-yyyy, dd/mm/yy, dd-mm-yy
+    const match = dateStr.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+    if (match) {
+      const day = match[1];
+      const month = match[2];
+      let year = match[3];
+      if (year.length === 2) year = '20' + year;
+      return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
     }
-    return new Date(dateStr);
+    // Fallback for ISO or other formats
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d;
+    return new Date('1970-01-01');
   }
 
   // Sort filtered transactions
   const sortedAndFilteredTransactions = [...filteredTransactions].sort((a, b) => {
-    const dateA = parseDate(a['Date'] as string);
-    const dateB = parseDate(b['Date'] as string);
+    // Find the date field: prefer 'Date', fallback to 'Transaction Date', fallback to any field containing 'date'
+    function getDateField(obj: Record<string, unknown>) {
+      if ('Date' in obj) return 'Date';
+      if ('Transaction Date' in obj) return 'Transaction Date';
+      const key = Object.keys(obj).find(k => k.toLowerCase() === 'date' || k.toLowerCase() === 'transaction date');
+      if (key) return key;
+      return Object.keys(obj).find(k => k.toLowerCase().includes('date'));
+    }
+    const dateFieldA = getDateField(a);
+    const dateFieldB = getDateField(b);
+    const dateA = parseDate(dateFieldA ? a[dateFieldA] as string : '');
+    const dateB = parseDate(dateFieldB ? b[dateFieldB] as string : '');
     if (sortOrder === 'desc') {
       return dateB.getTime() - dateA.getTime();
     } else {
@@ -488,7 +541,7 @@ function StatementsContent() {
     await fetch('/api/transaction/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactionId: tx.id, tags })
+      body: JSON.stringify({ transactionId: tx.id, tags: tags.map(tag => tag.id) })
     });
     setTagCreateMsg('Tag removed!');
     setTimeout(() => setTagCreateMsg(null), 1500);
@@ -523,6 +576,7 @@ function StatementsContent() {
 
   return (
     <div className="min-h-screen py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
+      <Toaster position="top-center" />
       {/* Breadcrumb Navigation */}
       <nav className="text-sm mb-4 flex items-center gap-2 text-gray-600">
         <span>Home</span>
@@ -637,38 +691,43 @@ function StatementsContent() {
               statements.map((statement) => (
                 <div
                   key={statement.id}
-                  className="relative bg-white/70 backdrop-blur-lg p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-lg border border-blue-100 transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl group overflow-hidden cursor-pointer"
+                  className="relative bg-white/70 backdrop-blur-lg p-1 sm:p-2 rounded-md shadow border border-blue-100 transition-transform duration-200 hover:scale-[1.01] hover:shadow group overflow-hidden cursor-pointer max-w-[180px] min-w-[120px]"
+                  style={{ minHeight: '60px' }}
                   onClick={() => {
                     setPreviewUrl(statement.s3FileUrl);
                     setPreviewStatementId(statement.id);
                     setPreviewOpen(true);
                   }}
                 >
-                  <div className="absolute top-4 right-4 opacity-5 text-blue-500 text-4xl sm:text-5xl pointer-events-none select-none rotate-12">
+                  <div className="absolute top-1 right-1 opacity-5 text-blue-400 text-lg sm:text-xl pointer-events-none select-none rotate-12">
                     <RiFileList3Line />
                   </div>
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 flex items-center gap-2">
-                    <span className="bg-blue-100 p-2 rounded-full text-blue-500 text-lg sm:text-xl shadow">
+                  <h3 className="text-xs sm:text-sm font-semibold text-gray-800 flex items-center gap-1">
+                    <span className="bg-blue-100 p-0.5 rounded-full text-blue-500 text-sm sm:text-base shadow">
                       <RiFileList3Line />
                     </span>
                     {statement.fileName || 'File'}
                   </h3>
-                  <div className="mt-3 sm:mt-4 flex flex-wrap gap-1.5 sm:gap-2">
-                    {statement.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-xs rounded-full shadow border border-blue-200 font-medium"
-                      >
-                        <RiPriceTag3Line className="text-blue-400" /> {tag}
-                      </span>
-                    ))}
+                  <div className="mt-1 flex flex-wrap gap-0.5 min-h-[18px]">
+                    {statement.tags && statement.tags.length > 0 ? (
+                      statement.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="flex items-center gap-0.5 px-1 py-0.5 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-[10px] rounded-full shadow border border-blue-200 font-medium"
+                        >
+                          <RiPriceTag3Line className="text-blue-400 text-xs" /> {tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-gray-300 text-[10px] italic">No tags</span>
+                    )}
                   </div>
-                  <div className="mt-4 flex justify-end gap-2">
+                  <div className="mt-1 flex justify-end gap-1">
                     <button
                       onClick={e => { e.stopPropagation(); handleDeleteStatement(statement.id, statement.s3FileUrl); }}
-                      className="px-3 py-1 text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                      className="px-1 py-0.5 text-red-600 bg-red-50 rounded hover:bg-red-100"
                     >
-                      <RiDeleteBin6Line />
+                      <RiDeleteBin6Line className="text-sm" />
                     </button>
                   </div>
                 </div>
@@ -717,6 +776,20 @@ function StatementsContent() {
                 tagging={tagging}
                 tagError={tagError}
                 tagSuccess={tagSuccess}
+                onCreateTag={async (name) => {
+                  // Example: create tag in backend and return new tag id
+                  const userId = localStorage.getItem('userId');
+                  const res = await fetch('/api/tags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, userId, color: '#60a5fa' })
+                  });
+                  if (!res.ok) throw new Error('Failed to create tag');
+                  const tag = await res.json();
+                  setAllTags(prev => [...prev, tag]);
+                  setSelectedTagId(tag.id);
+                  return tag.id;
+                }}
               />
             )}
 
@@ -832,6 +905,15 @@ function StatementsContent() {
         bankId={bankId}
         accountId={accountId}
         fileName={statements.find(s => s.id === previewStatementId)?.fileName || ''}
+      />
+      <ConfirmDeleteModal
+        isOpen={deleteModal.open}
+        onClose={() => setDeleteModal({ open: false })}
+        onConfirm={confirmDeleteStatement}
+        itemName={deleteModal.fileName || ''}
+        itemType="file"
+        description="This will also delete all related transactions imported from this file. This action cannot be undone."
+        loading={deleting}
       />
     </div>
   );

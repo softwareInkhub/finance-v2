@@ -76,10 +76,11 @@ export async function DELETE(request: Request) {
     // Fetch all transactions
     const txResult = await docClient.send(new ScanCommand({ TableName: TABLES.TRANSACTIONS || 'transactions' }));
     const transactions = Array.isArray(txResult.Items) ? txResult.Items : [];
-    // For each transaction, if it has this tag, remove it and update
+    // For each transaction, if it has this tag ID, remove it and update
     const updatePromises = transactions.map(async (tx) => {
       if (!Array.isArray(tx.tags) || tx.tags.length === 0) return;
-      const newTags = tx.tags.filter((t) => t.id !== id);
+      // Filter out the tag ID to be deleted
+      const newTags = tx.tags.filter((tagId) => tagId !== id);
       if (newTags.length === tx.tags.length) return; // no change
       await docClient.send(new UpdateCommand({
         TableName: TABLES.TRANSACTIONS || 'transactions',

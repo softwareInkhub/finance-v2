@@ -110,11 +110,7 @@ export default function BanksTabsClient() {
     }
   };
 
-  const handleAddTab = () => {
-    const newKey = `tab${tabs.length + 1}`;
-    setTabs([...tabs, { key: newKey, label: `New Tab`, type: 'overview' }]);
-    setActiveTab(newKey);
-  };
+  
 
   const handleBankCardClick = (bank: Bank) => {
     const tabKey = `accounts-${bank.id}`;
@@ -174,11 +170,45 @@ export default function BanksTabsClient() {
   };
 
   const handleDeleteBank = async (bankId: string) => {
-    if (!window.confirm('Are you sure you want to delete this bank?')) return;
+    const bank = banks.find(b => b.id === bankId);
+    const bankName = bank?.bankName || 'this bank';
+    
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${bankName}"?\n\n` +
+      `⚠️  WARNING: This will also delete:\n` +
+      `• ALL accounts under this bank\n` +
+      `• ALL statement files uploaded for this bank\n` +
+      `• ALL transactions from this bank\n\n` +
+      `This action cannot be undone.`
+    );
+    
+    if (!confirmed) return;
+    
     try {
       const response = await fetch(`/api/bank/${bankId}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to delete bank');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete bank');
+      }
+      
+      const result = await response.json();
       setBanks(prev => prev.filter(b => b.id !== bankId));
+      
+      // Show success message with deletion counts
+      let message = `Successfully deleted "${bankName}".`;
+      if (result.deletedAccounts > 0 || result.deletedStatements > 0 || result.deletedTransactions > 0) {
+        message += `\n\nAlso deleted:`;
+        if (result.deletedAccounts > 0) {
+          message += `\n• ${result.deletedAccounts} account(s)`;
+        }
+        if (result.deletedStatements > 0) {
+          message += `\n• ${result.deletedStatements} statement file(s)`;
+        }
+        if (result.deletedTransactions > 0) {
+          message += `\n• ${result.deletedTransactions} transaction(s)`;
+        }
+      }
+      alert(message);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to delete bank');
     }
@@ -235,13 +265,6 @@ export default function BanksTabsClient() {
               )}
             </button>
           ))}
-          <button
-            onClick={handleAddTab}
-            className="ml-2 px-3 py-2 rounded-t-lg bg-gradient-to-r from-blue-400 to-purple-400 text-white font-bold shadow-sm hover:scale-105 transition"
-            title="Add Tab"
-          >
-            +
-          </button>
         </div>
         <div>
           {activeTab === 'overview' && (
