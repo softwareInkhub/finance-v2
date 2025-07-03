@@ -347,20 +347,20 @@ function StatementsContent() {
     if (!statementId || !s3FileUrl) return;
     setDeleting(true);
     try {
-      const res = await fetch('/api/statement/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statementId, s3FileUrl }),
-      });
-      if (res.ok) {
+    const res = await fetch('/api/statement/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statementId, s3FileUrl }),
+    });
+    if (res.ok) {
         const result = await res.json();
-        setStatements(prev => prev.filter(s => s.id !== statementId));
+      setStatements(prev => prev.filter(s => s.id !== statementId));
         toast.success(
           result.deletedTransactions > 0
             ? `Deleted "${fileName}" and ${result.deletedTransactions} related transaction(s).`
             : `Deleted "${fileName}".`
         );
-      } else {
+    } else {
         const errorData = await res.json();
         toast.error(`Failed to delete: ${errorData.error || 'Unknown error'}`);
       }
@@ -711,12 +711,12 @@ function StatementsContent() {
                   <div className="mt-1 flex flex-wrap gap-0.5 min-h-[18px]">
                     {statement.tags && statement.tags.length > 0 ? (
                       statement.tags.map((tag) => (
-                        <span
-                          key={tag}
+                      <span
+                        key={tag}
                           className="flex items-center gap-0.5 px-1 py-0.5 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 text-[10px] rounded-full shadow border border-blue-200 font-medium"
-                        >
+                      >
                           <RiPriceTag3Line className="text-blue-400 text-xs" /> {tag}
-                        </span>
+                      </span>
                       ))
                     ) : (
                       <span className="text-gray-300 text-[10px] italic">No tags</span>

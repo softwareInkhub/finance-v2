@@ -244,8 +244,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
                         <div className="flex gap-1">
                           {(row[sh] as Tag[]).map((tag, tagIdx: number) => (
-                            <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] group" style={{ background: tag.color, color: '#222' }}>
-                              <RiPriceTag3Line className="inline mr-1" />{tag.name}
+                            <span key={tag.id + '-' + tagIdx} className="inline-flex items-center text-xs px-2 py-0.5 rounded mr-1 mb-1 max-w-[120px] group" style={{ background: tag.color, color: '#222' }}>
+                              <RiPriceTag3Line className="inline mr-1" />
+                              <span className="truncate">{tag.name}</span>
                               {onRemoveTag && (
                                 <button
                                   type="button"
