@@ -30,6 +30,26 @@ export async function POST(request: Request) {
   try {
     const { name, color, userId } = await request.json();
     if (!name || !userId) return NextResponse.json({ error: 'Tag name and userId required' }, { status: 400 });
+    
+    // Check if tag with same name already exists for this user (case-insensitive)
+    const existingTagsParams: ScanCommandInput = {
+      TableName: TABLES.TAGS,
+      FilterExpression: '#userId = :userId',
+      ExpressionAttributeNames: { '#userId': 'userId' },
+      ExpressionAttributeValues: { ':userId': userId },
+    };
+    const existingTagsResult = await docClient.send(new ScanCommand(existingTagsParams));
+    
+    // Check for case-insensitive duplicate
+    if (existingTagsResult.Items && existingTagsResult.Items.length > 0) {
+      const existingTag = existingTagsResult.Items.find(tag => 
+        tag.name && tag.name.toLowerCase() === name.toLowerCase()
+      );
+      if (existingTag) {
+        return NextResponse.json({ error: 'Tag with this name already exists' }, { status: 409 });
+      }
+    }
+    
     const tag = {
       id: uuidv4(),
       name,

@@ -53,7 +53,7 @@ const TagFilterPills: React.FC<TagFilterPillsProps> = ({ allTags, tagFilters, on
   };
 
   return (
-    <div className="flex flex-wrap gap-1 sm:gap-2 items-center mb-4 relative">
+    <div className="flex max-h-[10vh] overflow-y-auto p-4 border-gray-200 border-2 flex-wrap gap-1 sm:gap-2 items-center mb-4 relative">
       {allTags.map(tag => {
         const btnRef = React.createRef<HTMLButtonElement>();
         const count = tagStats ? tagStats[tag.name] : undefined;

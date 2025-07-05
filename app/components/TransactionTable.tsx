@@ -164,7 +164,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   return (
-    <div>
+    <div className="h-[95vh] flex flex-col">
       {/* Top horizontal scrollbar */}
       <div
         ref={topScrollRef}
@@ -178,8 +178,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       >
         <div style={{ width: tableWidth, height: 1 }} />
       </div>
-      {/* Table with bottom scrollbar */}
-      <div ref={tableScrollRef} style={{ overflowX: 'auto' }}>
+      {/* Table container with vertical scroll */}
+      <div ref={tableScrollRef} className="flex-1 overflow-auto">
       {loading ? (
         <div className="text-gray-500 text-sm">Loading transactions...</div>
       ) : error ? (
@@ -195,7 +195,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               <col key={h} style={{ width: columnWidths[h] || DEFAULT_WIDTH }} />
             ))}
           </colgroup>
-          <thead>
+          <thead className="sticky top-0 z-20 bg-white shadow">
             <tr>
               <th className="border px-2 py-1 bg-gray-100" style={{ width: 40 }}>
                 <input type="checkbox" checked={selectAll} onChange={onSelectAll} />

@@ -76,7 +76,7 @@ function StatementsContent() {
   const [transactionHeaders, setTransactionHeaders] = useState<string[]>([]);
   const [uploadTags, setUploadTags] = useState('');
   const [searchField, setSearchField] = useState('all');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'tagged' | 'untagged'>('desc');
 
   // Advanced tag creation features - ADDED
   const [selection, setSelection] = useState<{ text: string; x: number; y: number; rowIdx?: number } | null>(null);
@@ -189,7 +189,16 @@ function StatementsContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: selection.text, userId }),
       });
+      
+      if (res.status === 409) {
+        // Tag already exists
+        setTagCreateMsg("Tag already exists!");
+        setTimeout(() => setTagCreateMsg(null), 1500);
+        return;
+      }
+      
       if (!res.ok) throw new Error("Failed to create tag");
+      
       setTagCreateMsg("Tag created!");
       setPendingTag(selection.rowIdx !== undefined ? { 
         tagName: selection.text, 
@@ -475,7 +484,32 @@ function StatementsContent() {
 
   // Sort filtered transactions
   const sortedAndFilteredTransactions = [...filteredTransactions].sort((a, b) => {
-    // Find the date field: prefer 'Date', fallback to 'Transaction Date', fallback to any field containing 'date'
+    // Handle tagged/untagged sorting
+    if (sortOrder === 'tagged' || sortOrder === 'untagged') {
+      const tagsA = Array.isArray(a.tags) ? a.tags : [];
+      const tagsB = Array.isArray(b.tags) ? b.tags : [];
+      const hasTagsA = tagsA.length > 0;
+      const hasTagsB = tagsB.length > 0;
+      
+      if (sortOrder === 'tagged') {
+        // Tagged transactions first
+        if (hasTagsA && !hasTagsB) return -1;
+        if (!hasTagsA && hasTagsB) return 1;
+      } else {
+        // Untagged transactions first
+        if (!hasTagsA && hasTagsB) return -1;
+        if (hasTagsA && !hasTagsB) return 1;
+      }
+      
+      // If both have same tag status, sort by date (newest first)
+      const dateFieldA = getDateField(a);
+      const dateFieldB = getDateField(b);
+      const dateA = parseDate(dateFieldA ? a[dateFieldA] as string : '');
+      const dateB = parseDate(dateFieldB ? b[dateFieldB] as string : '');
+      return dateB.getTime() - dateA.getTime();
+    }
+    
+    // Date-based sorting
     function getDateField(obj: Record<string, unknown>) {
       if ('Date' in obj) return 'Date';
       if ('Transaction Date' in obj) return 'Transaction Date';
@@ -748,6 +782,12 @@ function StatementsContent() {
               searchFieldOptions={['all', ...transactionHeaders]}
               sortOrder={sortOrder}
               onSortOrderChange={setSortOrder}
+              sortOrderOptions={[
+                { value: 'desc', label: 'Latest First' },
+                { value: 'asc', label: 'Oldest First' },
+                { value: 'tagged', label: 'Tagged Only' },
+                { value: 'untagged', label: 'Untagged Only' }
+              ]}
             />
             
             {/* Tag Filters */}
@@ -784,6 +824,19 @@ function StatementsContent() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, userId, color: '#60a5fa' })
                   });
+                  
+                  if (res.status === 409) {
+                    // Tag already exists - find the existing tag and use it
+                    const existingTagsRes = await fetch('/api/tags?userId=' + userId);
+                    const existingTags = await existingTagsRes.json();
+                    const existingTag = Array.isArray(existingTags) ? existingTags.find(t => t.name === name) : null;
+                    if (existingTag) {
+                      setSelectedTagId(existingTag.id);
+                      return existingTag.id;
+                    }
+                    throw new Error('Tag already exists');
+                  }
+                  
                   if (!res.ok) throw new Error('Failed to create tag');
                   const tag = await res.json();
                   setAllTags(prev => [...prev, tag]);

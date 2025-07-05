@@ -419,7 +419,7 @@ export default function SuperBankPage() {
 
   // Add state
   const [searchField, setSearchField] = useState('all');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'tagged' | 'untagged'>('desc');
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
@@ -572,6 +572,14 @@ export default function SuperBankPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: selection.text, userId }),
       });
+      
+      if (res.status === 409) {
+        // Tag already exists
+        setTagCreateMsg("Tag already exists!");
+        setTimeout(() => setTagCreateMsg(null), 1500);
+        return;
+      }
+      
       if (!res.ok) throw new Error("Failed to create tag");
       setTagCreateMsg("Tag created!");
       setPendingTag(selection.rowIdx !== undefined ? { tagName: selection.text, rowIdx: selection.rowIdx, selectionText: selection.text } : null);
@@ -750,7 +758,7 @@ export default function SuperBankPage() {
     ? mappedRowsWithConditions.filter(row => Array.isArray(row.tags) && row.tags.some(t => tagFilters.includes(t.name)))
     : mappedRowsWithConditions;
 
-  // Then apply search and date filters to tagFilteredRows
+  // Then apply search, date, and tag/untagged filters to tagFilteredRows
   const filteredRows = tagFilteredRows.filter((row) => {
     // Search
     const searchMatch =
@@ -790,6 +798,15 @@ export default function SuperBankPage() {
         if (dateRange.from && d < dateRange.from) dateMatch = false;
         if (dateRange.to && d > dateRange.to) dateMatch = false;
       }
+    }
+    // Tagged/Untagged filter
+    if (sortOrder === 'tagged') {
+      const tags = (row['Tags'] || row['tags']) as Tag[] | undefined;
+      if (!Array.isArray(tags) || tags.length === 0) return false;
+    }
+    if (sortOrder === 'untagged') {
+      const tags = (row['Tags'] || row['tags']) as Tag[] | undefined;
+      if (Array.isArray(tags) && tags.length > 0) return false;
     }
     return searchMatch && dateMatch;
   });
@@ -1204,6 +1221,20 @@ export default function SuperBankPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, userId, color: '#60a5fa' }) // default blue
     });
+    
+    if (res.status === 409) {
+      // Tag already exists - find the existing tag and use it
+      const existingTagsRes = await fetch('/api/tags?userId=' + userId);
+      const existingTags = await existingTagsRes.json();
+      const existingTag = Array.isArray(existingTags) ? existingTags.find(t => t.name.toLowerCase() === trimmed) : null;
+      if (existingTag) {
+        setSelectedTagId(existingTag.id);
+        setTimeout(() => handleAddTag(), 0);
+        return existingTag.id;
+      }
+      throw new Error('Tag already exists');
+    }
+    
     if (!res.ok) throw new Error('Failed to create tag');
     const tag = await res.json();
     setAllTags(prev => [...prev, tag]);
@@ -1358,6 +1389,11 @@ export default function SuperBankPage() {
             totalTags={filteredTotalTags}
             tagged={tagged}
             untagged={untagged}
+            showTagStats={true}
+            onShowUntagged={() => {
+              // Filter to show only untagged transactions
+              setSortOrder('untagged');
+            }}
           />
         )}
         {/* Filter box below stats, wider on PC */}
@@ -1373,6 +1409,12 @@ export default function SuperBankPage() {
           searchFieldOptions={['all', ...superHeader]}
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
+          sortOrderOptions={[
+            { value: 'desc', label: 'Latest First' },
+            { value: 'asc', label: 'Oldest First' },
+            { value: 'tagged', label: 'Tagged Only' },
+            { value: 'untagged', label: 'Untagged Only' },
+          ]}
         />
         {/* Tag filter pills section below controls */}
         <TagFilterPills
