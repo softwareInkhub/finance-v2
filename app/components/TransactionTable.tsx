@@ -164,7 +164,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   return (
-    <div>
+    <div className="h-[95vh] flex flex-col">
       {/* Top horizontal scrollbar */}
       <div
         ref={topScrollRef}
@@ -178,8 +178,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       >
         <div style={{ width: tableWidth, height: 1 }} />
       </div>
-      {/* Table with bottom scrollbar */}
-      <div ref={tableScrollRef} style={{ overflowX: 'auto' }}>
+      {/* Table container with vertical scroll */}
+      <div ref={tableScrollRef} className="flex-1 overflow-auto">
       {loading ? (
         <div className="text-gray-500 text-sm">Loading transactions...</div>
       ) : error ? (
@@ -195,7 +195,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               <col key={h} style={{ width: columnWidths[h] || DEFAULT_WIDTH }} />
             ))}
           </colgroup>
-          <thead>
+          <thead className="sticky top-0 z-20 bg-white shadow">
             <tr>
               <th className="border px-2 py-1 bg-gray-100" style={{ width: 40 }}>
                 <input type="checkbox" checked={selectAll} onChange={onSelectAll} />
@@ -244,8 +244,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       {sh.toLowerCase() === 'tags' && Array.isArray(row[sh]) ? (
                         <div className="flex gap-1">
                           {(row[sh] as Tag[]).map((tag, tagIdx: number) => (
-                            <span key={tag.id + '-' + tagIdx} className="inline-block text-xs px-2 py-0.5 rounded mr-1 mb-1 whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] group" style={{ background: tag.color, color: '#222' }}>
-                              <RiPriceTag3Line className="inline mr-1" />{tag.name}
+                            <span key={tag.id + '-' + tagIdx} className="inline-flex items-center text-xs px-2 py-0.5 rounded mr-1 mb-1 max-w-[120px] group" style={{ background: tag.color, color: '#222' }}>
+                              <RiPriceTag3Line className="inline mr-1" />
+                              <span className="truncate">{tag.name}</span>
                               {onRemoveTag && (
                                 <button
                                   type="button"

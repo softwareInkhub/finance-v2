@@ -1,6 +1,8 @@
 import React from 'react';
 import { FiDownload } from 'react-icons/fi';
 
+type SortOrderType = 'asc' | 'desc' | 'tagged' | 'untagged';
+
 interface TransactionFilterBarProps {
   search: string;
   onSearchChange: (v: string) => void;
@@ -11,8 +13,9 @@ interface TransactionFilterBarProps {
   searchField?: string;
   onSearchFieldChange?: (v: string) => void;
   searchFieldOptions?: string[];
-  sortOrder?: 'asc' | 'desc';
-  onSortOrderChange?: (order: 'asc' | 'desc') => void;
+  sortOrder?: SortOrderType;
+  onSortOrderChange?: (order: SortOrderType) => void;
+  sortOrderOptions?: { value: SortOrderType; label: string }[];
 }
 
 const TransactionFilterBar: React.FC<TransactionFilterBarProps> = ({
@@ -27,6 +30,7 @@ const TransactionFilterBar: React.FC<TransactionFilterBarProps> = ({
   searchFieldOptions,
   sortOrder = 'desc',
   onSortOrderChange,
+  sortOrderOptions,
 }) => (
   <div className="w-full max-w-5xl mx-auto bg-white rounded-lg shadow-sm p-3 flex flex-col gap-3 mb-4">
     <div className="flex flex-col md:flex-row gap-2 items-center">
@@ -52,11 +56,15 @@ const TransactionFilterBar: React.FC<TransactionFilterBarProps> = ({
         {onSortOrderChange && (
           <select
             value={sortOrder}
-            onChange={e => onSortOrderChange(e.target.value as 'asc' | 'desc')}
+            onChange={e => onSortOrderChange(e.target.value as SortOrderType)}
             className="border px-2 py-2 rounded text-sm h-10 min-w-[120px]"
           >
-            <option value="desc">Latest First</option>
-            <option value="asc">Oldest First</option>
+            {(typeof sortOrderOptions !== 'undefined' ? sortOrderOptions : [
+              { value: 'desc', label: 'Latest First' },
+              { value: 'asc', label: 'Oldest First' },
+            ]).map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
           </select>
         )}
       </div>

@@ -2,6 +2,8 @@
 import { useEffect, useState, useRef } from "react";
 import { RiEdit2Line } from 'react-icons/ri';
 import { FiDownload } from 'react-icons/fi';
+import type { JSX } from 'react';
+import React from 'react';
 
 import AnalyticsSummary from '../../components/AnalyticsSummary';
 import TransactionFilterBar from '../../components/TransactionFilterBar';
@@ -39,6 +41,14 @@ function SuperBankReportModal({ isOpen, onClose, transactions, totalBanks, total
   bankIdNameMap: { [id: string]: string };
   tagFilters: string[];
 }) {
+  // Move all hooks to the top, before any early return
+  const A4_HEIGHT_PX = 1122; // 297mm at 96dpi
+  const A4_WIDTH_PX = 794;   // 210mm at 96dpi
+  const [page, setPage] = useState(0);
+  const [exportingAllPages, setExportingAllPages] = useState(false);
+  const reportContainerRef = useRef<HTMLDivElement>(null);
+  const allPagesRef = useRef<HTMLDivElement>(null);
+
   if (Object.keys(bankIdNameMap).length === 0) {
     return (
       <Modal isOpen={isOpen} onClose={onClose} title="Super Bank Report">
@@ -118,76 +128,253 @@ function SuperBankReportModal({ isOpen, onClose, transactions, totalBanks, total
   const superTotalDebit = statsArr.reduce((sum, s) => sum + s.totalDebit, 0);
   const superTagged = statsArr.reduce((sum, s) => sum + s.tagged, 0);
   const superUntagged = statsArr.reduce((sum, s) => sum + s.untagged, 0);
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Super Bank Report" maxWidthClass="max-w-2xl">
-      <div className="mb-6">
-        <h3 className="text-lg font-bold mb-2 text-blue-700">Per-Bank Summary</h3>
+
+  // Group transactions by bank and then by accountId
+  const perBankAccount: { [bankId: string]: { [accountId: string]: (Transaction & { AmountRaw?: number; 'Dr./Cr.'?: string })[] } } = {};
+  transactions.forEach(tx => {
+    const bankId = tx.bankId;
+    const accountId = tx.accountId;
+    if (!perBankAccount[bankId]) perBankAccount[bankId] = {};
+    if (!perBankAccount[bankId][accountId]) perBankAccount[bankId][accountId] = [];
+    perBankAccount[bankId][accountId].push(tx);
+  });
+
+  // --- A4 Pagination Logic ---
+  const pages: JSX.Element[] = [
+    // Super Bank Summary Page
+    <div key="summary" style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, padding: '32px', boxSizing: 'border-box', background: 'white', pageBreakAfter: 'always' }}>
+      <div className="bg-gradient-to-r from-purple-100 to-blue-100 rounded-xl shadow p-6 mb-4 flex flex-col gap-4">
+        <h3 className="text-2xl font-extrabold mb-2 text-purple-800 tracking-tight">Super Bank Summary</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow p-4 flex flex-col items-center">
+            <div className="text-xs text-gray-500">Total Transactions</div>
+            <div className="text-2xl font-bold text-blue-700">{superTotalTransactions}</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 flex flex-col items-center">
+            <div className="text-xs text-gray-500">Total Amount</div>
+            <div className="text-2xl font-bold text-green-700">{superTotalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 flex flex-col items-center">
+            <div className="text-xs text-gray-500">Total Credit</div>
+            <div className="text-2xl font-bold text-green-700">{superTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 flex flex-col items-center">
+            <div className="text-xs text-gray-500">Total Debit</div>
+            <div className="text-2xl font-bold text-red-700">{superTotalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 flex flex-col items-center">
+            <div className="text-xs text-gray-500">Total Banks</div>
+            <div className="text-2xl font-bold text-yellow-700">{totalBanks}</div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 flex flex-col items-center">
+            <div className="text-xs text-gray-500">Total Accounts</div>
+            <div className="text-2xl font-bold text-purple-700">{totalAccounts}</div>
+          </div>
+          <div className="bg-blue-50 rounded-lg shadow p-4 col-span-2 sm:col-span-3 flex flex-col items-center">
+            <div className="text-xs text-gray-500">Tagged / Untagged Transactions</div>
+            <div className="text-lg font-bold text-blue-700">{superTagged} <span className="text-gray-400">/</span> {superUntagged}</div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    // Per-Bank Summary Page
+    <div key="per-bank" style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, padding: '32px', boxSizing: 'border-box', background: 'white', pageBreakAfter: 'always' }}>
+      <div className="bg-white rounded-xl shadow p-6">
+        <h3 className="text-xl font-bold mb-4 text-blue-700 tracking-tight">Per-Bank Summary</h3>
         {tagFilters && tagFilters.length > 0 && (
           <div className="text-xs text-gray-500 mb-2">
             Note: If a transaction has multiple selected tags, it is counted in each relevant tag row.
           </div>
         )}
         <div className="overflow-x-auto">
-          <table className="min-w-full border text-sm">
+          <table className="min-w-full border text-sm rounded-xl overflow-hidden">
             <thead>
               <tr className="bg-blue-50">
-                <th className="border px-3 py-2">{tagFilters && tagFilters.length > 0 ? 'Tag' : 'Bank'}</th>
-                <th className="border px-3 py-2">Total Txns</th>
-                <th className="border px-3 py-2">Total Amount</th>
-                <th className="border px-3 py-2">Credit</th>
-                <th className="border px-3 py-2">Debit</th>
-                <th className="border px-3 py-2">Tagged</th>
-                <th className="border px-3 py-2">Untagged</th>
+                <th className="border px-4 py-2">{tagFilters && tagFilters.length > 0 ? 'Tag' : 'Bank'}</th>
+                <th className="border px-4 py-2">Total Txns</th>
+                <th className="border px-4 py-2">Total Amount</th>
+                <th className="border px-4 py-2">Credit</th>
+                <th className="border px-4 py-2">Debit</th>
+                <th className="border px-4 py-2">Tagged</th>
+                <th className="border px-4 py-2">Untagged</th>
               </tr>
             </thead>
             <tbody>
               {statsArr.map((s, i) => (
-                <tr key={s.label + i}>
-                  <td className="border px-3 py-2 font-semibold">{s.label}</td>
-                  <td className="border px-3 py-2 text-center">{s.totalTransactions}</td>
-                  <td className="border px-3 py-2 text-right">{s.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                  <td className="border px-3 py-2 text-right text-green-700">{s.totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                  <td className="border px-3 py-2 text-right text-red-700">{s.totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                  <td className="border px-3 py-2 text-center text-blue-700">{s.tagged}</td>
-                  <td className="border px-3 py-2 text-center text-gray-500">{s.untagged}</td>
+                <tr key={s.label + i} className="hover:bg-blue-50 transition">
+                  <td className="border px-4 py-2 font-semibold">{s.label}</td>
+                  <td className="border px-4 py-2 text-center">{s.totalTransactions}</td>
+                  <td className="border px-4 py-2 text-right">{s.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="border px-4 py-2 text-right text-green-700">{s.totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="border px-4 py-2 text-right text-red-700">{s.totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td className="border px-4 py-2 text-center text-blue-700">{s.tagged}</td>
+                  <td className="border px-4 py-2 text-center text-gray-500">{s.untagged}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
-      <div className="mb-2">
-        <h3 className="text-lg font-bold mb-2 text-purple-700">Super Bank Summary</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-blue-50 rounded p-3">
-            <div className="text-xs text-gray-500">Total Transactions</div>
-            <div className="text-xl font-bold text-blue-700">{superTotalTransactions}</div>
+    </div>,
+    // Per-Bank, Per-Account Report Page
+    <div key="per-account" style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, padding: '32px', boxSizing: 'border-box', background: 'white', pageBreakAfter: 'always' }}>
+      <div className="bg-white rounded-xl shadow p-6">
+        <h3 className="text-xl font-bold mb-4 text-blue-700 tracking-tight">Per-Bank, Per-Account Report</h3>
+        {Object.entries(perBankAccount).map(([bankId, accounts]) => (
+          <div key={bankId} className="mb-8">
+            <div className="font-semibold text-blue-800 mb-4 text-xl border-b border-blue-100 pb-1 uppercase tracking-wide">{bankIdNameMap[bankId] || bankId}</div>
+            {Object.entries(accounts).map(([accountId, txs]) => {
+              let totalAmount = 0, totalCredit = 0, totalDebit = 0;
+              txs.forEach(tx => {
+                const amount = typeof tx.AmountRaw === 'number' ? tx.AmountRaw : 0;
+                totalAmount += amount;
+                const crdr = (tx['Dr./Cr.'] || '').toString().trim().toUpperCase();
+                if (crdr === 'CR') totalCredit += Math.abs(amount);
+                else if (crdr === 'DR') totalDebit += Math.abs(amount);
+              });
+
+              // Tag breakdown for this account
+              const tagStats: { [tagName: string]: { count: number; totalAmount: number; totalCredit: number; totalDebit: number; } } = {};
+              txs.forEach(tx => {
+                const tags = Array.isArray(tx.tags) ? tx.tags : [];
+                const amount = typeof tx.AmountRaw === 'number' ? tx.AmountRaw : 0;
+                const crdr = (tx['Dr./Cr.'] || '').toString().trim().toUpperCase();
+                tags.forEach(tag => {
+                  if (!tagStats[tag.name]) tagStats[tag.name] = { count: 0, totalAmount: 0, totalCredit: 0, totalDebit: 0 };
+                  tagStats[tag.name].count++;
+                  tagStats[tag.name].totalAmount += amount;
+                  if (crdr === 'CR') tagStats[tag.name].totalCredit += Math.abs(amount);
+                  else if (crdr === 'DR') tagStats[tag.name].totalDebit += Math.abs(amount);
+                });
+              });
+
+              return (
+                <div key={accountId} className="mb-6">
+                  <div className="bg-blue-100/60 rounded-2xl shadow-md p-6 mb-4">
+                    <div className="text-base font-semibold text-gray-700 mb-1">
+                      Account: <span className="font-mono text-blue-900 underline underline-offset-2 cursor-pointer hover:text-blue-700 hover:underline">{accountId}</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mb-2">
+                      Transactions: <span className="font-bold text-blue-800">{txs.length}</span> |
+                      Total: <span className="font-bold text-blue-800">{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span> |
+                      Credit: <span className="font-bold text-green-700">{totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span> |
+                      Debit: <span className="font-bold text-red-700">{totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    {/* Tag breakdown table */}
+                    {Object.keys(tagStats).length > 0 && (
+                      <div className="overflow-x-auto mt-2">
+                        <table className="min-w-[400px] w-full border text-xs bg-white rounded-xl overflow-hidden shadow-sm">
+                          <thead>
+                            <tr className="bg-blue-50 text-blue-900">
+                              <th className="border px-4 py-2 font-semibold">Tag</th>
+                              <th className="border px-4 py-2 font-semibold"># Txns</th>
+                              <th className="border px-4 py-2 font-semibold">Total</th>
+                              <th className="border px-4 py-2 font-semibold">Credit</th>
+                              <th className="border px-4 py-2 font-semibold">Debit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(tagStats).map(([tagName, stat]) => (
+                              <tr key={tagName} className="hover:bg-blue-100/60 transition">
+                                <td className="border px-4 py-2">{tagName}</td>
+                                <td className="border px-4 py-2 text-center">{stat.count}</td>
+                                <td className="border px-4 py-2 text-right">{stat.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                <td className="border px-4 py-2 text-right text-green-700">{stat.totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                <td className="border px-4 py-2 text-right text-red-700">{stat.totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="bg-green-50 rounded p-3">
-            <div className="text-xs text-gray-500">Total Amount</div>
-            <div className="text-xl font-bold text-green-700">{superTotalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-          </div>
-          <div className="bg-green-50 rounded p-3">
-            <div className="text-xs text-gray-500">Total Credit</div>
-            <div className="text-xl font-bold text-green-700">{superTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-          </div>
-          <div className="bg-red-50 rounded p-3">
-            <div className="text-xs text-gray-500">Total Debit</div>
-            <div className="text-xl font-bold text-red-700">{superTotalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-          </div>
-          <div className="bg-yellow-50 rounded p-3">
-            <div className="text-xs text-gray-500">Total Banks</div>
-            <div className="text-xl font-bold text-yellow-700">{totalBanks}</div>
-          </div>
-          <div className="bg-purple-50 rounded p-3">
-            <div className="text-xs text-gray-500">Total Accounts</div>
-            <div className="text-xl font-bold text-purple-700">{totalAccounts}</div>
-          </div>
-          <div className="bg-blue-50 rounded p-3 col-span-2">
-            <div className="text-xs text-gray-500">Tagged / Untagged Transactions</div>
-            <div className="text-lg font-bold text-blue-700">{superTagged} <span className="text-gray-400">/</span> {superUntagged}</div>
-          </div>
+        ))}
+      </div>
+    </div>
+  ];
+
+  const handleDownloadPDF = async () => {
+    setExportingAllPages(true);
+    await new Promise(resolve => setTimeout(resolve, 100)); // Wait for DOM update
+    if (!reportContainerRef.current) return;
+    const html2pdf = (await import('html2pdf.js')).default;
+    html2pdf()
+      .set({
+        margin: 0,
+        filename: 'super-bank-report.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, allowTaint: true },
+        jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+      })
+      .from(reportContainerRef.current)
+      .save()
+      .finally(() => setExportingAllPages(false));
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Super Bank Report" maxWidthClass="max-w-[810px]">
+      {/* Download PDF Button */}
+      <div className="relative">
+        <button
+          className="absolute top-4 right-4 z-10 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow transition-all"
+          onClick={handleDownloadPDF}
+        >
+          Download PDF
+        </button>
+      </div>
+      {/* Pagination controls at the top */}
+      {pages.length > 1 && (
+        <div className="flex justify-center items-center gap-4 mt-4 mb-4">
+          <button className="px-3 py-1 rounded bg-gray-200 text-gray-700 font-semibold disabled:opacity-50" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Previous</button>
+          <span className="text-sm font-medium">Page {page + 1} of {pages.length}</span>
+          <button className="px-3 py-1 rounded bg-gray-200 text-gray-700 font-semibold disabled:opacity-50" onClick={() => setPage(p => Math.min(pages.length - 1, p + 1))} disabled={page === pages.length - 1}>Next</button>
         </div>
+      )}
+      {/* A4-sized paginated report */}
+      <div
+        ref={reportContainerRef}
+        className={exportingAllPages ? "w-full bg-transparent p-0 m-0" : "flex justify-center items-start w-full bg-transparent p-0 m-0"}
+        style={{ margin: 0 }}
+      >
+        {exportingAllPages
+          ? (
+              <div style={{ width: '100%' }}>
+                {pages.map((pageContent, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      width: `${A4_WIDTH_PX}px`,
+                      height: `${A4_HEIGHT_PX}px`,
+                      background: 'white',
+                      boxSizing: 'border-box',
+                      padding: 0,
+                      overflow: 'hidden',
+                      margin: '0 auto',
+                      ...(idx !== pages.length - 1 ? { pageBreakAfter: 'always' } : {}),
+                    }}
+                  >
+                    <div style={{ padding: '16px', width: '100%', height: '100%' }}>{pageContent}</div>
+                  </div>
+                ))}
+              </div>
+            )
+          : (
+              <div style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, background: 'white', boxSizing: 'border-box', pageBreakAfter: 'always', padding: '16px', borderRadius: '16px', boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}>
+                {pages[page]}
+              </div>
+            )}
+      </div>
+      {/* Hidden all-pages container for PDF export */}
+      <div ref={allPagesRef} style={{ visibility: 'hidden', position: 'absolute', left: '-9999px', top: 0 }}>
+        {pages.map((section, pageIdx) => (
+          <div key={pageIdx} style={{ width: `${A4_WIDTH_PX}px`, minHeight: `${A4_HEIGHT_PX}px`, padding: '16px', boxSizing: 'border-box', pageBreakAfter: 'always', background: 'white' }}>
+            {section}
+          </div>
+        ))}
       </div>
     </Modal>
   );
@@ -232,7 +419,7 @@ export default function SuperBankPage() {
 
   // Add state
   const [searchField, setSearchField] = useState('all');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'tagged' | 'untagged'>('desc');
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
@@ -385,6 +572,14 @@ export default function SuperBankPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: selection.text, userId }),
       });
+      
+      if (res.status === 409) {
+        // Tag already exists
+        setTagCreateMsg("Tag already exists!");
+        setTimeout(() => setTagCreateMsg(null), 1500);
+        return;
+      }
+      
       if (!res.ok) throw new Error("Failed to create tag");
       setTagCreateMsg("Tag created!");
       setPendingTag(selection.rowIdx !== undefined ? { tagName: selection.text, rowIdx: selection.rowIdx, selectionText: selection.text } : null);
@@ -563,7 +758,7 @@ export default function SuperBankPage() {
     ? mappedRowsWithConditions.filter(row => Array.isArray(row.tags) && row.tags.some(t => tagFilters.includes(t.name)))
     : mappedRowsWithConditions;
 
-  // Then apply search and date filters to tagFilteredRows
+  // Then apply search, date, and tag/untagged filters to tagFilteredRows
   const filteredRows = tagFilteredRows.filter((row) => {
     // Search
     const searchMatch =
@@ -603,6 +798,15 @@ export default function SuperBankPage() {
         if (dateRange.from && d < dateRange.from) dateMatch = false;
         if (dateRange.to && d > dateRange.to) dateMatch = false;
       }
+    }
+    // Tagged/Untagged filter
+    if (sortOrder === 'tagged') {
+      const tags = (row['Tags'] || row['tags']) as Tag[] | undefined;
+      if (!Array.isArray(tags) || tags.length === 0) return false;
+    }
+    if (sortOrder === 'untagged') {
+      const tags = (row['Tags'] || row['tags']) as Tag[] | undefined;
+      if (Array.isArray(tags) && tags.length > 0) return false;
     }
     return searchMatch && dateMatch;
   });
@@ -1017,6 +1221,20 @@ export default function SuperBankPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, userId, color: '#60a5fa' }) // default blue
     });
+    
+    if (res.status === 409) {
+      // Tag already exists - find the existing tag and use it
+      const existingTagsRes = await fetch('/api/tags?userId=' + userId);
+      const existingTags = await existingTagsRes.json();
+      const existingTag = Array.isArray(existingTags) ? existingTags.find(t => t.name.toLowerCase() === trimmed) : null;
+      if (existingTag) {
+        setSelectedTagId(existingTag.id);
+        setTimeout(() => handleAddTag(), 0);
+        return existingTag.id;
+      }
+      throw new Error('Tag already exists');
+    }
+    
     if (!res.ok) throw new Error('Failed to create tag');
     const tag = await res.json();
     setAllTags(prev => [...prev, tag]);
@@ -1171,6 +1389,11 @@ export default function SuperBankPage() {
             totalTags={filteredTotalTags}
             tagged={tagged}
             untagged={untagged}
+            showTagStats={true}
+            onShowUntagged={() => {
+              // Filter to show only untagged transactions
+              setSortOrder('untagged');
+            }}
           />
         )}
         {/* Filter box below stats, wider on PC */}
@@ -1186,6 +1409,12 @@ export default function SuperBankPage() {
           searchFieldOptions={['all', ...superHeader]}
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
+          sortOrderOptions={[
+            { value: 'desc', label: 'Latest First' },
+            { value: 'asc', label: 'Oldest First' },
+            { value: 'tagged', label: 'Tagged Only' },
+            { value: 'untagged', label: 'Untagged Only' },
+          ]}
         />
         {/* Tag filter pills section below controls */}
         <TagFilterPills
