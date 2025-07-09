@@ -4,6 +4,7 @@ import { RiEdit2Line } from 'react-icons/ri';
 import { FiDownload } from 'react-icons/fi';
 import type { JSX } from 'react';
 import React from 'react';
+import { useTabBar } from '../../components/TabBarContext';
 
 import AnalyticsSummary from '../../components/AnalyticsSummary';
 import TransactionFilterBar from '../../components/TransactionFilterBar';
@@ -12,6 +13,7 @@ import TaggingControls from '../../components/TaggingControls';
 import TransactionTable from '../../components/TransactionTable';
 import { Transaction, TransactionRow, Tag } from '../../types/transaction';
 import Modal from '../../components/Modals/Modal';
+
 
 interface Condition {
   if: {
@@ -381,6 +383,7 @@ function SuperBankReportModal({ isOpen, onClose, transactions, totalBanks, total
 }
 
 export default function SuperBankPage() {
+  const { addTab } = useTabBar();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1244,139 +1247,9 @@ export default function SuperBankPage() {
   };
 
   return (
-    <div className="min-h-screen py-4 sm:py-6 px-2 sm:px-4">
-      <div className="max-w-full sm:max-w-[75%] mx-auto">
-        <div className="flex flex-row items-center justify-between gap-2 mb-4 sm:mb-6">
-          <h1 className="text-base sm:text-2xl font-bold text-blue-700 truncate">Super Bank: All Transactions</h1>
-          <button
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow font-semibold text-sm sm:text-base whitespace-nowrap"
-            onClick={() => setShowHeaderSection(true)}
-          >
-            Header
-          </button>
-        </div>
-        {/* Super Bank Header Display and Edit - toggled by button */}
-        {showHeaderSection && (
-          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-blue-50 rounded-lg shadow relative">
-            <div className="absolute top-2 right-2 flex items-center gap-2">
-              <button
-                className="text-blue-700 hover:text-blue-900 text-xl font-bold"
-                onClick={() => setShowHeaderSection(false)}
-                title="Close"
-              >
-                ×
-              </button>
-              {userEmail === "nitesh.inkhub@gmail.com" && !headerEditing && (
-                <button
-                  className="px-2 py-1 bg-blue-500 text-white rounded text-xs flex items-center"
-                  onClick={() => setHeaderEditing(true)}
-                  title="Edit Header"
-                >
-                  <RiEdit2Line size={16} />
-                </button>
-              )}
-            </div>
-            <h2 className="font-bold text-blue-700 mb-2 text-sm sm:text-base">Super Bank Header</h2>
-            <div className="mb-2 text-xs sm:text-sm text-gray-700">
-              <span className="font-semibold">Current Header:</span>
-              <div className="flex flex-wrap gap-1 sm:gap-2 mt-1">
-                {superHeader.length > 0 ? (
-                  superHeader.map((col, idx) => (
-                    <span
-                      key={idx}
-                      className="px-2 sm:px-3 py-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 rounded-full border border-blue-200 shadow text-xs font-medium"
-                    >
-                      {col}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-gray-400">No header set</span>
-                )}
-              </div>
-            </div>
-            {headerEditing && (
-              <form onSubmit={handleHeaderSave} className="flex flex-col gap-2 mt-3 sm:mt-4">
-                <label className="block text-xs font-medium text-blue-700 mb-1">Edit Header Columns</label>
-                <div className="flex flex-wrap gap-2 sm:gap-3 items-center bg-white/70 p-2 sm:p-3 rounded border border-blue-100 shadow-sm">
-                  {headerInputs.map((header, idx) => (
-                    <div
-                      key={idx}
-                      className={`relative group flex-1 min-w-[120px] ${dragOverIdx === idx ? 'ring-2 ring-blue-400' : ''}`}
-                      draggable
-                      onDragStart={() => setDraggedIdx(idx)}
-                      onDragOver={e => {
-                        e.preventDefault();
-                        setDragOverIdx(idx);
-                      }}
-                      onDrop={e => {
-                        e.preventDefault();
-                        if (draggedIdx !== null) {
-                          const newOrder = reorder(headerInputs, draggedIdx, idx);
-                          setHeaderInputs(newOrder);
-                        }
-                        setDraggedIdx(null);
-                        setDragOverIdx(null);
-                      }}
-                      onDragEnd={() => {
-                        setDraggedIdx(null);
-                        setDragOverIdx(null);
-                      }}
-                    >
-                      <input
-                        type="text"
-                        value={header}
-                        onChange={e => handleHeaderInputChange(idx, e.target.value)}
-                        className="w-full rounded border border-blue-200 px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        placeholder={`Header ${idx + 1}`}
-                        disabled={headerLoading}
-                      />
-                      {headerInputs.length > 1 && (
-                        <button
-                          type="button"
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
-                          title="Remove"
-                          onClick={() => handleRemoveHeaderInput(idx)}
-                          tabIndex={-1}
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className="flex items-center justify-center w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white rounded-full text-xl font-bold shadow"
-                    onClick={handleAddHeaderInput}
-                    title="Add header column"
-                    disabled={headerLoading}
-                    style={{ alignSelf: 'center' }}
-                  >
-                    +
-                  </button>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2 mt-2">
-                  <button
-                    type="submit"
-                    className="px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg shadow hover:scale-[1.02] hover:shadow-lg transition-all font-semibold disabled:opacity-50 w-full sm:w-auto"
-                    disabled={headerLoading}
-                  >
-                    {headerLoading ? "Saving..." : "Save Header"}
-                  </button>
-                  <button
-                    type="button"
-                    className="px-3 sm:px-4 py-2 bg-gray-200 text-gray-700 rounded-lg shadow hover:bg-gray-300 transition-all font-semibold w-full sm:w-auto"
-                    onClick={() => setHeaderEditing(false)}
-                    disabled={headerLoading}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                {headerError && <div className="text-red-600 mt-2 text-sm">{headerError}</div>}
-                {headerSuccess && <div className="text-green-600 mt-2 text-sm">{headerSuccess}</div>}
-              </form>
-            )}
-          </div>
-        )}
+    <div className="min-h-screen w-full space-y-4">
+      <div className="w-full">
+        <h1 className="text-2xl font-bold text-center text-blue-800 mb-4">Super Bank: All Transactions</h1>
         {/* Analytics summary above controls */}
         {filteredRows.length > 0 && (
           <AnalyticsSummary
@@ -1391,41 +1264,41 @@ export default function SuperBankPage() {
             untagged={untagged}
             showTagStats={true}
             onShowUntagged={() => {
-              // Filter to show only untagged transactions
               setSortOrder('untagged');
             }}
           />
         )}
-        {/* Filter box below stats, wider on PC */}
-        <TransactionFilterBar
-          search={search}
-          onSearchChange={setSearch}
-          dateRange={dateRange}
-          onDateRangeChange={setDateRange}
-          onDownload={handleDownload}
-          downloadDisabled={selectedRows.size === 0}
-          searchField={searchField}
-          onSearchFieldChange={setSearchField}
-          searchFieldOptions={['all', ...superHeader]}
-          sortOrder={sortOrder}
-          onSortOrderChange={setSortOrder}
-          sortOrderOptions={[
-            { value: 'desc', label: 'Latest First' },
-            { value: 'asc', label: 'Oldest First' },
-            { value: 'tagged', label: 'Tagged Only' },
-            { value: 'untagged', label: 'Untagged Only' },
-          ]}
-        />
-        {/* Tag filter pills section below controls */}
-        <TagFilterPills
-          allTags={sortedTags}
-          tagFilters={tagFilters}
-          onToggleTag={tagName => setTagFilters(filters => filters.includes(tagName) ? filters.filter(t => t !== tagName) : [...filters, tagName])}
-          onClear={() => setTagFilters([])}
-          onTagDeleted={() => handleTagDeleted()}
-          onApplyTagToAll={handleApplyTagToAllFromMenu}
-          tagStats={filteredTagStats}
-        />
+        {/* Filter/search bar and controls */}
+        <div className="w-full flex flex-col gap-2">
+          <TransactionFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            onDownload={handleDownload}
+            downloadDisabled={selectedRows.size === 0}
+            searchField={searchField}
+            onSearchFieldChange={setSearchField}
+            searchFieldOptions={['all', ...superHeader]}
+            sortOrder={sortOrder}
+            onSortOrderChange={setSortOrder}
+            sortOrderOptions={[
+              { value: 'desc', label: 'Latest First' },
+              { value: 'asc', label: 'Oldest First' },
+              { value: 'tagged', label: 'Tagged Only' },
+              { value: 'untagged', label: 'Untagged Only' },
+            ]}
+          />
+          <TagFilterPills
+            allTags={sortedTags}
+            tagFilters={tagFilters}
+            onToggleTag={tagName => setTagFilters(filters => filters.includes(tagName) ? filters.filter(t => t !== tagName) : [...filters, tagName])}
+            onClear={() => setTagFilters([])}
+            onTagDeleted={() => handleTagDeleted()}
+            onApplyTagToAll={handleApplyTagToAllFromMenu}
+            tagStats={filteredTagStats}
+          />
+        </div>
         {/* Tagging controls above table */}
         {sortedAndFilteredRows.filter(tx => selectedRows.has(tx.id)).length > 0 && (
           <TaggingControls
@@ -1441,7 +1314,7 @@ export default function SuperBankPage() {
           />
         )}
         {/* Table and selection logic */}
-        <div ref={tableRef} className="overflow-x-auto relative">
+        <div ref={tableRef} className="overflow-x-auto relative w-full">
           {/* Floating create tag button */}
           {selection && (
             <button

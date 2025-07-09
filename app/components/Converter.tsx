@@ -142,6 +142,12 @@ export default function Converter() {
     setError(null);
   };
 
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setResult(null);
+    setError(null);
+  };
+
   const handleConvert = async () => {
     if (!selectedFile || !inputType || !outputType) return;
     setIsConverting(true);
@@ -188,100 +194,124 @@ export default function Converter() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <div className="card-glass shadow-lg p-8 space-y-8">
+    <div className="max-w-xl mx-auto p-4 sm:p-8">
+      <div className="bg-white rounded-2xl shadow-2xl border border-blue-100 p-8 space-y-8">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">File Converter</h1>
-          <p className="text-gray-600">Select file types and convert your files easily</p>
+          <h1 className="text-3xl font-extrabold text-gray-900 mb-2 drop-shadow">File Converter</h1>
+          <p className="text-gray-500 text-base">Select file types and convert your files easily</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-8 justify-center items-center">
-          <div>
-            <label className="block text-sm font-medium mb-1">Input Type</label>
-            <select
-              className="border rounded px-3 py-2 w-full"
-              value={inputType}
-              onChange={e => {
-                setInputType(e.target.value);
-                setOutputType('');
-                setSelectedFile(null);
-                setResult(null);
-                setError(null);
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Input Type</label>
+              <select
+                className="w-full border border-blue-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 focus:outline-none bg-blue-50 text-gray-800 shadow-sm"
+                value={inputType}
+                onChange={e => { setInputType(e.target.value); setOutputType(''); }}
+              >
+                <option value="">Select</option>
+                {Object.keys(conversionMap).map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Output Type</label>
+              <select
+                className="w-full border border-blue-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 focus:outline-none bg-blue-50 text-gray-800 shadow-sm"
+                value={outputType}
+                onChange={e => setOutputType(e.target.value)}
+                disabled={!inputType}
+              >
+                <option value="">Select</option>
+                {inputType && conversionMap[inputType]?.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Page Size</label>
+              <select
+                className="w-full border border-blue-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 focus:outline-none bg-blue-50 text-gray-800 shadow-sm"
+                value={pageSize}
+                onChange={e => setPageSize(e.target.value)}
+              >
+                {PAGE_SIZES.map(size => (
+                  <option key={size.value} value={size.value}>{size.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {/* Upload Area */}
+          <div className="flex flex-col items-center">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Upload File</label>
+            <div
+              className={`w-full border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center transition-all duration-200 cursor-pointer bg-blue-50 hover:bg-blue-100 ${selectedFile ? 'border-green-400' : 'border-blue-200'}`}
+              onClick={() => document.getElementById('file-input')?.click()}
+              onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+              onDrop={e => {
+                e.preventDefault();
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFileSelect(e.dataTransfer.files[0]);
               }}
             >
-              <option value="">Select</option>
-              {Object.keys(conversionMap).map(type => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
+              <svg className="w-12 h-12 text-blue-400 mb-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+              {!selectedFile ? (
+                <>
+                  <span className="text-blue-700 font-semibold">Drag and drop your file here</span>
+                  <span className="text-xs text-blue-400 mt-1">or <span className="underline cursor-pointer">browse</span></span>
+                  <span className="text-xs text-gray-400 mt-2">Supported: {inputType || 'PDF, CSV, TXT, ...'}</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-green-700 font-semibold">{selectedFile.name}</span>
+                  <button
+                    className="ml-2 px-2 py-1 bg-red-100 text-red-600 rounded hover:bg-red-200 text-xs font-bold mt-2"
+                    onClick={e => { e.stopPropagation(); handleRemoveFile(); }}
+                  >Remove</button>
+                </>
+              )}
+              <input
+                id="file-input"
+                type="file"
+                className="hidden"
+                accept={inputType ? `.${inputType.toLowerCase()}` : undefined}
+                onChange={e => {
+                  if (e.target.files && e.target.files[0]) handleFileSelect(e.target.files[0]);
+                }}
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Output Type</label>
-            <select
-              className="border rounded px-3 py-2 w-full"
-              value={outputType}
-              onChange={e => setOutputType(e.target.value)}
-              disabled={!inputType}
-            >
-              <option value="">Select</option>
-              {inputType && conversionMap[inputType].map(type => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Page Size</label>
-            <select
-              className="border rounded px-3 py-2 w-40"
-              value={pageSize}
-              onChange={e => setPageSize(e.target.value)}
-            >
-              {PAGE_SIZES.map(size => (
-                <option key={size.value} value={size.value}>{size.label}</option>
-              ))}
-            </select>
-          </div>
+          {/* Convert Button */}
+          <button
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-500 to-green-400 text-white font-bold text-lg shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+            onClick={handleConvert}
+            disabled={!selectedFile || !inputType || !outputType || isConverting}
+          >
+            {isConverting ? (
+              <span className="flex items-center justify-center gap-2"><FiLoader className="animate-spin" /> Converting...</span>
+            ) : 'Convert'}
+          </button>
+          {/* Feedback */}
+          {error && <div className="text-red-600 text-center font-semibold mt-2">{error}</div>}
+          {result && !error && (
+            <div className="flex flex-col items-center mt-4">
+              <div className="text-green-700 font-semibold mb-2">Conversion successful!</div>
+              <button
+                className="px-5 py-2 rounded-lg bg-gradient-to-r from-green-400 to-blue-500 text-white font-bold shadow hover:scale-105 transition-all"
+                onClick={handleDownload}
+              >
+                <FiDownload className="inline mr-2" /> Download
+              </button>
+              <button
+                className="mt-2 text-blue-600 underline text-sm hover:text-blue-800"
+                onClick={() => setPreviewOpen(true)}
+              >Preview</button>
+              <Modal open={previewOpen} onClose={() => setPreviewOpen(false)}>
+                <Preview result={result} outputType={outputType} />
+              </Modal>
+            </div>
+          )}
         </div>
-        {inputType && outputType && (
-          <FileUploader onFileSelect={handleFileSelect} acceptedFileTypes={'.' + inputType.toLowerCase().replace(/\/.*/, '')} />
-        )}
-        {selectedFile && (
-          <div className="flex justify-center">
-            <button
-              onClick={handleConvert}
-              className="flex items-center space-x-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
-              disabled={isConverting}
-            >
-              {isConverting ? <FiLoader className="animate-spin" /> : null}
-              <span>{isConverting ? 'Converting...' : 'Convert'}</span>
-            </button>
-          </div>
-        )}
-        {error && (
-          <div className="text-red-500 text-center text-sm">
-            {error}
-          </div>
-        )}
-        {result && !isConverting && (
-          <div className="flex justify-center gap-4">
-            <button
-              onClick={() => setPreviewOpen(true)}
-              className="flex items-center space-x-2 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
-            >
-              <span>Preview</span>
-            </button>
-            <button
-              onClick={handleDownload}
-              className="flex items-center space-x-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
-            >
-              <FiDownload />
-              <span>Download</span>
-            </button>
-          </div>
-        )}
-        <Modal open={previewOpen} onClose={() => setPreviewOpen(false)}>
-          <h2 className="text-xl font-bold mb-4">Preview</h2>
-          <Preview result={result} outputType={outputType} />
-        </Modal>
       </div>
     </div>
   );

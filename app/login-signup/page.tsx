@@ -28,7 +28,10 @@ export default function LoginSignupPage() {
       }),
     });
     const data = await res.json();
-    if (!res.ok) setError(data.error || "Something went wrong");
+    if (!res.ok) {
+      setError(data.error || "Something went wrong");
+      localStorage.setItem("isLoggedIn", "false");
+    }
     else {
       setSuccess(mode === 'signup' ? "Signup successful!" : "Login successful!");
       if (mode === 'login') {
@@ -43,6 +46,9 @@ export default function LoginSignupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 via-white to-purple-100">
       <div className="bg-white rounded-xl shadow-xl p-8 w-full max-w-md">
+        <div className="text-center mb-6">
+          <span className="text-2xl font-extrabold text-blue-700 tracking-wide">Brmh Fintech</span>
+        </div>
         <div className="flex justify-center mb-6">
           <button
             className={`px-4 py-2 rounded-l-lg font-semibold transition-all ${mode === 'login' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-blue-700'}`}

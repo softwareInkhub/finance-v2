@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar from './Sidebar';
 import { 
   RiMenuLine, 
@@ -8,12 +8,14 @@ import {
   RiUserLine
 } from 'react-icons/ri';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-export default function Navbar() {
+export default function Navbar({ onSidebarMenuClick }: { onSidebarMenuClick?: () => void }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const router = useRouter();
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const userId = localStorage.getItem('userId');
@@ -27,12 +29,29 @@ export default function Navbar() {
     }
   }, []);
 
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setShowProfileMenu(false);
+      }
+    }
+    if (showProfileMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showProfileMenu]);
+
   const handleSidebarItemClick = () => {
     setIsMobileMenuOpen(false);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('userId');
     setShowProfileMenu(false);
     router.push('/login-signup');
   };
@@ -41,15 +60,17 @@ export default function Navbar() {
     <>
       <nav className="h-16 flex items-center px-4 md:px-6 bg-white/60 backdrop-blur-xl border-b border-blue-100 transition-all duration-300">
         <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="md:hidden p-2  hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 mr-2 transition-all duration-200 border border-transparent focus:border-blue-400 shadow-sm"
+          onClick={onSidebarMenuClick ? onSidebarMenuClick : () => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="md:hidden p-2 hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 mr-2 transition-all duration-200 border border-transparent focus:border-blue-400 shadow-sm"
         >
           <RiMenuLine className="text-xl text-gray-600" />
         </button>
         <div className="flex-1">
-          <h1 className="text-lg md:text-xl font-semibold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent drop-shadow-lg select-none">
+          <Link href="/">
+            <span className="cursor-pointer text-lg md:text-xl font-semibold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent drop-shadow-lg select-none">
             Brmh Fintech
-          </h1>
+            </span>
+          </Link>
         </div>
         <div className="flex items-center space-x-2 md:space-x-4">
           <button className="p-2 rounded-full hover:bg-blue-100 focus:ring-2 focus:ring-blue-400 transition-colors duration-200 relative group shadow-sm">
@@ -67,7 +88,7 @@ export default function Navbar() {
               <RiUserLine className="text-xl text-gray-600 group-hover:text-blue-600 transition-colors duration-200" />
             </button>
             {showProfileMenu && (
-              <div className="absolute right-0 mt-2 w-32 bg-white border border-gray-200 rounded shadow-lg z-50">
+              <div ref={profileMenuRef} className="absolute right-0 mt-2 w-32 bg-white border border-gray-200 rounded shadow-lg z-50">
                 <button
                   className="w-full text-left px-4 py-2 hover:bg-blue-50 text-red-600 font-semibold rounded"
                   onClick={handleLogout}

@@ -42,6 +42,7 @@ const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
   onShowUntagged,
 }) => {
   const [expandedBanks, setExpandedBanks] = useState<string[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
 
   const toggleBank = (bankId: string) => {
     setExpandedBanks((prev) =>
@@ -50,14 +51,75 @@ const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
   };
 
   return (
-    <div className="flex flex-wrap gap-2 sm:gap-4 justify-center mb-4">
+    <>
+      {/* Mobile/Tablet: Only two stats, rest in dropdown */}
+      <div className="w-full flex justify-center mb-4 md:hidden">
+        <div className="w-full max-w-md flex flex-col items-center bg-white/70 rounded-xl px-2 py-2 shadow">
+          <div className="flex flex-wrap gap-2 w-full justify-center">
+            {showAmount && typeof totalCredit !== 'undefined' && (
+              <div className="px-3 py-2 bg-cyan-100 text-cyan-800 rounded-lg font-semibold shadow text-xs flex-1 text-center min-w-[120px]">
+                Credit: {typeof totalCredit === 'number' ? totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (Number(totalCredit).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
+              </div>
+            )}
+            {showAmount && typeof totalDebit !== 'undefined' && (
+              <div className="px-3 py-2 bg-rose-100 text-rose-800 rounded-lg font-semibold shadow text-xs flex-1 text-center min-w-[120px]">
+                Debit: {typeof totalDebit === 'number' ? totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (Number(totalDebit).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
+              </div>
+            )}
+            <button
+              className="px-3 py-2 bg-gray-100 text-gray-800 rounded-lg font-semibold shadow text-xs focus:outline-none min-w-[80px]"
+              onClick={() => setShowDropdown((v) => !v)}
+              type="button"
+            >
+              {showDropdown ? 'Hide Details ▲' : 'More ▼'}
+            </button>
+          </div>
+          {showDropdown && (
+            <div className="w-full flex flex-wrap gap-2 justify-center mt-2 animate-fade-in">
+              <div className="px-3 py-2 bg-blue-100 text-blue-800 rounded-lg font-semibold shadow text-xs flex-1 text-center min-w-[120px]">
+                Total Transactions: {totalTransactions}
+              </div>
+              {showAmount && (
+                <div className="px-3 py-2 bg-green-100 text-green-800 rounded-lg font-semibold shadow text-xs flex-1 text-center min-w-[120px]">
+                  Total Amount: {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (Number(totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
+                </div>
+              )}
+              <div className="px-3 py-2 bg-yellow-100 text-yellow-800 rounded-lg font-semibold shadow text-xs flex-1 text-center min-w-[120px]">
+                Total Banks: {totalBanks}
+              </div>
+              <div className="px-3 py-2 bg-pink-100 text-pink-800 rounded-lg font-semibold shadow text-xs flex-1 text-center min-w-[120px]">
+                Total Accounts: {totalAccounts}
+              </div>
+              {showTagStats && (
+                <>
+                  <div className="px-3 py-2 bg-purple-100 text-purple-800 rounded-lg font-semibold shadow text-xs flex-1 text-center min-w-[120px]">
+                    Tagged: {tagged}
+                  </div>
+                  <button
+                    className="px-3 py-2 bg-orange-100 text-orange-800 rounded-lg font-semibold shadow text-xs focus:outline-none hover:bg-orange-200 flex-1 text-center min-w-[120px]"
+                    onClick={onShowUntagged}
+                    type="button"
+                  >
+                    Untagged: {untagged}
+                  </button>
+                  <div className="px-3 py-2 bg-indigo-100 text-indigo-800 rounded-lg font-semibold shadow text-xs flex-1 text-center min-w-[120px]">
+                    Total Tags: {totalTags}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      {/* Desktop: Show all stats as before */}
+      <div className="hidden md:flex flex-wrap gap-2 md:gap-4 justify-center mb-4">
       <div className="px-3 sm:px-4 py-2 bg-blue-100 text-blue-800 rounded-lg font-semibold shadow text-xs sm:text-sm">
         Total Transactions: {totalTransactions}
       </div>
       {showAmount && (
         <>
           <div className="px-3 sm:px-4 py-2 bg-green-100 text-green-800 rounded-lg font-semibold shadow text-xs sm:text-sm">
-            Total Amount: {totalAmount}
+            Total Amount: {typeof totalAmount === 'number' ? totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (Number(totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
           </div>
           {typeof totalCredit !== 'undefined' && (
             <div className="px-3 sm:px-4 py-2 bg-cyan-100 text-cyan-800 rounded-lg font-semibold shadow text-xs sm:text-sm">
@@ -131,6 +193,7 @@ const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
         </>
       )}
     </div>
+    </>
   );
 };
 
