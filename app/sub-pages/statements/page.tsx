@@ -359,7 +359,11 @@ function StatementsContent() {
     const res = await fetch('/api/statement/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ statementId, s3FileUrl }),
+      body: JSON.stringify({ 
+        statementId, 
+        s3FileUrl,
+        userId: localStorage.getItem("userId") || ""
+      }),
     });
     if (res.ok) {
         const result = await res.json();
@@ -624,6 +628,8 @@ function StatementsContent() {
         <span className="font-semibold text-blue-700">Files</span>
       </nav>
       <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
+        {/* File Migration Banner removed */}
+        
         <div className="flex flex-row justify-between items-center gap-2 sm:gap-4 mb-2">
           <div className="flex items-center gap-2">
             <div className="bg-blue-100 p-2 rounded-full text-blue-500 text-xl sm:text-2xl shadow">

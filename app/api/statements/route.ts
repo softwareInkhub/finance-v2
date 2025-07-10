@@ -7,14 +7,21 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const accountId = searchParams.get('accountId');
   const userId = searchParams.get('userId');
-  if (!accountId) {
-    return NextResponse.json({ error: 'accountId is required' }, { status: 400 });
+  if (!accountId && !userId) {
+    return NextResponse.json({ error: 'accountId or userId is required' }, { status: 400 });
   }
   try {
-    let filterExpression = 'accountId = :accountId';
-    const expressionAttributeValues: Record<string, string> = { ':accountId': accountId };
-    if (userId) {
-      filterExpression += ' AND userId = :userId';
+    let filterExpression = '';
+    const expressionAttributeValues: Record<string, string> = {};
+    if (accountId && userId) {
+      filterExpression = 'accountId = :accountId AND userId = :userId';
+      expressionAttributeValues[':accountId'] = accountId;
+      expressionAttributeValues[':userId'] = userId;
+    } else if (accountId) {
+      filterExpression = 'accountId = :accountId';
+      expressionAttributeValues[':accountId'] = accountId;
+    } else if (userId) {
+      filterExpression = 'userId = :userId';
       expressionAttributeValues[':userId'] = userId;
     }
     const result = await docClient.send(

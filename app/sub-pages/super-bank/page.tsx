@@ -633,14 +633,14 @@ export default function SuperBankPage() {
     if (!tagObj) return setPendingTag(null);
     await Promise.all(transactions.map(async (tx) => {
       // Check all primitive fields except arrays/objects and 'tags' for case-sensitive match
-              const hasMatch = Object.entries(tx).some(([key, val]) =>
-          key !== 'tags' &&
-          ((typeof val === 'string' && val.includes(selectionText)) ||
-           (typeof val === 'number' && String(val).includes(selectionText)))
-        );
-        if (hasMatch) {
-          const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
-          if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
+      const hasMatch = Object.entries(tx).some(([key, val]) =>
+        key !== 'tags' &&
+        ((typeof val === 'string' && val.includes(selectionText)) ||
+         (typeof val === 'number' && String(val).includes(selectionText)))
+      );
+      if (hasMatch) {
+        const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
+        if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
         await fetch('/api/transaction/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1019,7 +1019,7 @@ export default function SuperBankPage() {
   const handleTagDeleted = () => {
     // Implementation of handleTagDeleted function
   };
- 
+
 
   // Helper: get value for any column using per-bank conditions
   function getValueForColumn(row: TransactionRow, bankId: string, columnName: string): string | number | undefined {

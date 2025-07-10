@@ -1,15 +1,32 @@
 import { NextResponse } from 'next/server';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { DeleteCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient, s3, S3_BUCKET, TABLES } from '../../aws-client';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const { statementId, s3FileUrl } = await request.json();
-    if (!statementId || !s3FileUrl) {
+    const { statementId, s3FileUrl, userId } = await request.json();
+    if (!statementId || !s3FileUrl || !userId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // First, verify the statement belongs to the user
+    const statementResult = await docClient.send(
+      new GetCommand({
+        TableName: TABLES.BANK_STATEMENTS,
+        Key: { id: statementId },
+      })
+    );
+
+    if (!statementResult.Item) {
+      return NextResponse.json({ error: 'Statement not found' }, { status: 404 });
+    }
+
+    const statement = statementResult.Item;
+    if (statement.userId !== userId) {
+      return NextResponse.json({ error: 'Unauthorized: You can only delete your own files' }, { status: 403 });
     }
 
     // First, find and delete all related transactions
