@@ -47,7 +47,7 @@ export async function POST(request: Request) {
         Prefix: key,
         MaxKeys: 1
       }));
-      exists = (listRes.Contents && listRes.Contents.length > 0);
+      exists = !!(listRes.Contents && listRes.Contents.length > 0);
       if (exists) {
         // Add/increment suffix
         const { base, ext } = getFileNameParts(baseFileName);

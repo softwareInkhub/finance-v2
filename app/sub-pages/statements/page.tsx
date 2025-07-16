@@ -92,6 +92,9 @@ function StatementsContent() {
   }>({ open: false });
   const [deleting, setDeleting] = useState(false);
 
+  // Add state for loading and matching preview
+  const [applyingTagToAll, setApplyingTagToAll] = useState(false);
+
   useEffect(() => {
     const fetchStatements = async () => {
       if (!accountId) return;
@@ -110,11 +113,11 @@ function StatementsContent() {
   }, [accountId]);
 
   useEffect(() => {
-    if (tab === 'transactions' && accountId) {
+    if (tab === 'transactions' && accountId && bankName) {
       setLoadingTransactions(true);
       setTransactionsError(null);
       const userId = localStorage.getItem("userId") || "";
-      fetch(`/api/transactions?accountId=${accountId}&userId=${userId}`)
+      fetch(`/api/transactions?accountId=${accountId}&userId=${userId}&bankName=${encodeURIComponent(bankName)}`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) setTransactions(data);
@@ -123,7 +126,7 @@ function StatementsContent() {
         .catch(() => setTransactionsError('Failed to fetch transactions'))
         .finally(() => setLoadingTransactions(false));
     }
-  }, [tab, accountId]);
+  }, [tab, accountId, bankName]);
 
   useEffect(() => {
     if (bankId) {
@@ -231,7 +234,7 @@ function StatementsContent() {
     await fetch('/api/transaction/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactionId: tx.id, tags: tags.map(tag => tag.id) })
+      body: JSON.stringify({ transactionId: tx.id, tags: tags.map(tag => tag.id), bankName })
     });
     setPendingTag(null);
     setTagCreateMsg("Tag applied to transaction!");
@@ -239,7 +242,7 @@ function StatementsContent() {
     // Refresh transactions
     setLoadingTransactions(true);
     const userId = localStorage.getItem("userId") || "";
-    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}`)
+    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}&bankName=${encodeURIComponent(bankName)}`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setTransactions(data);
@@ -252,41 +255,45 @@ function StatementsContent() {
   // Advanced tag creation: Apply tag to all transactions where selection text is present - ADDED
   const handleApplyTagToAll = async () => {
     if (!pendingTag) return;
+    setApplyingTagToAll(true);
     const { tagName, selectionText } = pendingTag;
     const tagObj = allTags.find(t => t.name === tagName);
     if (!tagObj) return setPendingTag(null);
-    await Promise.all(transactions.map(async (tx) => {
-      // Check all primitive fields except arrays/objects and 'tags' for case-sensitive match
-      const hasMatch = Object.entries(tx).some(([key, val]) =>
+    // Find all matching transactions (case-insensitive)
+    const matching = transactions.filter((tx) => {
+      return Object.entries(tx).some(([key, val]) =>
         key !== 'tags' &&
-        ((typeof val === 'string' && val.includes(selectionText)) ||
-         (typeof val === 'number' && String(val).includes(selectionText)))
+        ((typeof val === 'string' && val.toLowerCase().includes(selectionText.toLowerCase())) ||
+         (typeof val === 'number' && String(val).toLowerCase().includes(selectionText.toLowerCase())))
       );
-      if (hasMatch) {
-        const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
-        if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
-        await fetch('/api/transaction/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transactionId: tx.id, tags: tags.map(tag => tag.id) })
-        });
-      }
+    });
+    await Promise.all(matching.map(async (tx) => {
+      const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
+      if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
+      await fetch('/api/transaction/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: tx.id, tags: tags.map(tag => tag.id), bankName })
+      });
     }));
     setPendingTag(null);
-    setTagCreateMsg("Tag applied to all matching transactions!");
+    setTagCreateMsg(`Tag applied to all ${matching.length} matching transactions!`);
     setTimeout(() => setTagCreateMsg(null), 1500);
     // Refresh transactions
     setLoadingTransactions(true);
     const userId = localStorage.getItem("userId") || "";
-    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}`)
+    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}&bankName=${encodeURIComponent(bankName)}`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setTransactions(data);
         else setTransactionsError(data.error || 'Failed to fetch transactions');
       })
       .catch(() => setTransactionsError('Failed to fetch transactions'))
-      .finally(() => setLoadingTransactions(false));
-  };
+      .finally(() => {
+        setLoadingTransactions(false);
+        setApplyingTagToAll(false);
+      });
+};
 
   // Auto-clear tagCreateMsg after 2 seconds - ADDED
   useEffect(() => {
@@ -355,34 +362,61 @@ function StatementsContent() {
     const { statementId, s3FileUrl, fileName } = deleteModal;
     if (!statementId || !s3FileUrl) return;
     setDeleting(true);
-    try {
-    const res = await fetch('/api/statement/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        statementId, 
-        s3FileUrl,
-        userId: localStorage.getItem("userId") || ""
-      }),
-    });
-    if (res.ok) {
-        const result = await res.json();
-      setStatements(prev => prev.filter(s => s.id !== statementId));
-        toast.success(
-          result.deletedTransactions > 0
-            ? `Deleted "${fileName}" and ${result.deletedTransactions} related transaction(s).`
-            : `Deleted "${fileName}".`
-        );
-    } else {
-        const errorData = await res.json();
-        toast.error(`Failed to delete: ${errorData.error || 'Unknown error'}`);
+    const userId = localStorage.getItem("userId") || "";
+    let attempts = 0;
+    let deleted = false;
+    let lastResult = null;
+    let remainingTransactions = 0;
+    while (attempts < 3 && !deleted) {
+      try {
+        const res = await fetch('/api/statement/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            statementId, 
+            s3FileUrl,
+            userId,
+            bankName
+          }),
+        });
+        if (res.ok) {
+          lastResult = await res.json();
+          // After delete, check for remaining transactions for this statement
+          const checkRes = await fetch(`/api/transactions?accountId=${accountId}&userId=${userId}&bankName=${encodeURIComponent(bankName)}`);
+          let stillLeft = [];
+          if (checkRes.ok) {
+            const txs = await checkRes.json();
+            stillLeft = Array.isArray(txs) ? txs.filter(tx => tx.statementId === statementId) : [];
+          }
+          remainingTransactions = stillLeft.length;
+          // Show per-attempt toast (remove this, only show final toast)
+          toast.success(
+            `Deleted "${fileName}" successfully. Deleted ${lastResult.deletedTransactions || 0} transaction(s) in ${attempts + 1} attempt(s).`
+          );
+          if (remainingTransactions === 0) {
+            setStatements(prev => prev.filter(s => s.id !== statementId));
+            deleted = true;
+          } else {
+            attempts++;
+            continue;
+          }
+        } else {
+          const errorData = await res.json();
+          toast.error(`Failed to delete: ${errorData.error || 'Unknown error'}`);
+          break;
+        }
+      } catch (error) {
+        if (attempts === 2) {
+          toast.error(error instanceof Error ? error.message : 'Failed to delete. Please try again.');
+        }
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete. Please try again.');
-    } finally {
-      setDeleting(false);
-      setDeleteModal({ open: false });
+      attempts++;
     }
+    if (!deleted && remainingTransactions > 0) {
+      toast.error(`Some transactions could not be deleted after 3 tries. Deleted ${lastResult?.deletedTransactions || 0} transaction(s) in 3 attempts. Please try again later.`);
+    }
+    setDeleting(false);
+    setDeleteModal({ open: false });
   };
 
   const handleRowSelect = (id: string) => {
@@ -414,21 +448,42 @@ function StatementsContent() {
     const tagObj = allTags.find(t => t.id === selectedTagId);
     if (!tagObj) { setTagging(false); return; }
     try {
-      await Promise.all(Array.from(selectedRows).map(async (id) => {
+      // Prepare bulk update data
+      const bulkUpdates = Array.from(selectedRows).map(id => {
         const tx = transactions.find(t => t.id === id);
-        if (!tx) return;
+        if (!tx) return null;
         const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
-        if (!tags.some(t => t.id === tagObj.id)) tags.push(tagObj);
-        await fetch('/api/transaction/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transactionId: id, tags: tags.map(tag => tag.id) })
-        });
-      }));
+        if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
+        return {
+          transactionId: tx.id,
+          tags: tags.map(tag => tag.id),
+          bankName: tx.bankName
+        };
+      }).filter(Boolean);
+      // Use bulk update API
+      const response = await fetch('/api/transaction/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: bulkUpdates })
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Bulk update failed');
+      }
       setTagSuccess('Tag added!');
       setSelectedTagId("");
       setSelectedRows(new Set());
       setTimeout(() => setTagSuccess(null), 1500);
+      setLoadingTransactions(true);
+      const userId = localStorage.getItem("userId") || "";
+      fetch(`/api/transactions?accountId=${accountId}&userId=${userId}&bankName=${encodeURIComponent(bankName)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setTransactions(data);
+          else setTransactionsError(data.error || 'Failed to fetch transactions');
+        })
+        .catch(() => setTransactionsError('Failed to fetch transactions'))
+        .finally(() => setLoadingTransactions(false));
     } catch {
       setTagError('Failed to add tag');
     } finally {
@@ -575,17 +630,18 @@ function StatementsContent() {
     const confirmed = window.confirm(`Are you sure you want to remove the tag "${tagName}" from this transaction?`);
     if (!confirmed) return;
     
+    setLoadingTransactions(true);
     const tags = Array.isArray(tx.tags) ? tx.tags.filter((t) => t.id !== tagId) : [];
     await fetch('/api/transaction/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactionId: tx.id, tags: tags.map(tag => tag.id) })
+      body: JSON.stringify({ transactionId: tx.id, tags: tags.map(tag => tag.id), bankName })
     });
     setTagCreateMsg('Tag removed!');
     setTimeout(() => setTagCreateMsg(null), 1500);
-    setLoadingTransactions(true);
+    // Refresh transactions
     const userId = localStorage.getItem("userId") || "";
-    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}`)
+    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}&bankName=${encodeURIComponent(bankName)}`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setTransactions(data);
@@ -611,6 +667,30 @@ function StatementsContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, bankName, filteredTransactions.length]);
+
+  // Add a handler for the tag menu action
+  const handleApplyTagToAllFromMenu = (tagName: string) => {
+    setPendingTag({ tagName, rowIdx: -1, selectionText: tagName });
+  };
+
+  // Add a handler for tag deletion from the system
+  const handleTagDeleted = () => {
+    setLoadingTransactions(true);
+    const userId = localStorage.getItem('userId') || '';
+    // Refetch all tags
+    fetch('/api/tags?userId=' + userId)
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setAllTags(data); else setAllTags([]); });
+    // Refetch all transactions
+    fetch(`/api/transactions?accountId=${accountId}&userId=${userId}&bankName=${encodeURIComponent(bankName)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setTransactions(data);
+        else setTransactionsError(data.error || 'Failed to fetch transactions');
+      })
+      .catch(() => setTransactionsError('Failed to fetch transactions'))
+      .finally(() => setLoadingTransactions(false));
+  };
 
   return (
     <div className="min-h-screen py-6 sm:py-10 px-3 sm:px-4 space-y-6 sm:space-y-8">
@@ -809,6 +889,8 @@ function StatementsContent() {
               }}
               onClear={() => setTagFilters([])}
               tagStats={tagStats}
+              onApplyTagToAll={handleApplyTagToAllFromMenu}
+              onTagDeleted={handleTagDeleted}
             />
 
             {/* Tagging Controls */}
@@ -909,16 +991,66 @@ function StatementsContent() {
                     left: selection?.x, 
                     top: selection?.y !== undefined ? selection.y + 8 : 48, 
                     zIndex: 1001 
-                  }} className="bg-white border border-blue-200 rounded shadow-lg px-3 sm:px-4 py-2 sm:py-3 flex flex-col gap-2 sm:gap-3 items-center">
+                  }} className="bg-white border border-blue-200 rounded shadow-lg px-3 sm:px-4 py-2 sm:py-3 flex flex-col gap-2 sm:gap-3 items-center max-w-md">
                     <span className="text-sm">Apply tag &quot;{pendingTag.tagName}&quot; to:</span>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <button className="px-3 py-1 bg-green-600 text-white rounded font-semibold text-xs hover:bg-green-700" 
-                              onClick={handleApplyTagToRow}>Only this transaction</button>
-                      <button className="px-3 py-1 bg-blue-600 text-white rounded font-semibold text-xs hover:bg-blue-700" 
-                              onClick={handleApplyTagToAll}>All transactions with this text</button>
-                      <button className="px-3 py-1 bg-gray-200 text-gray-700 rounded font-semibold text-xs hover:bg-gray-300" 
-                              onClick={() => setPendingTag(null)}>Cancel</button>
+                    {/* Preview of matching transactions */}
+                    <div className="w-full">
+                      <div className="text-xs text-gray-600 mb-2">
+                        Matching transactions with &quot;{pendingTag.selectionText}&quot;:
+                      </div>
+                      <div className="max-h-24 overflow-y-auto bg-gray-50 rounded p-2">
+                        {transactions.filter((tx) => {
+                          return Object.entries(tx).some(([key, val]) =>
+                            key !== 'tags' &&
+                            ((typeof val === 'string' && val.toLowerCase().includes(pendingTag.selectionText.toLowerCase())) ||
+                             (typeof val === 'number' && String(val).toLowerCase().includes(pendingTag.selectionText.toLowerCase())))
+                          );
+                        }).slice(0, 3).map((tx) => (
+                          <div key={tx.id} className="text-xs text-gray-600 py-1 border-b border-gray-200 last:border-b-0">
+                            <div className="flex justify-between">
+                              <span className="truncate">
+                                {String(tx.Description || tx.description || tx.Reference || tx.reference || 'Transaction')}
+                              </span>
+                              <span className="text-gray-500 ml-2">
+                                {tx.Amount ? `₹${tx.Amount}` : ''}
+                              </span>
+                            </div>
+                            <div className="text-gray-400 text-xs">
+                              {String(tx.Date || tx.date || '')}
+                            </div>
+                          </div>
+                        ))}
+                        {transactions.filter((tx) => {
+                          return Object.entries(tx).some(([key, val]) =>
+                            key !== 'tags' &&
+                            ((typeof val === 'string' && val.toLowerCase().includes(pendingTag.selectionText.toLowerCase())) ||
+                             (typeof val === 'number' && String(val).toLowerCase().includes(pendingTag.selectionText.toLowerCase())))
+                          );
+                        }).length > 3 && (
+                          <div className="text-xs text-gray-500 text-center py-1">
+                            ... and {transactions.filter((tx) => {
+                              return Object.entries(tx).some(([key, val]) =>
+                                key !== 'tags' &&
+                                ((typeof val === 'string' && val.toLowerCase().includes(pendingTag.selectionText.toLowerCase())) ||
+                                 (typeof val === 'number' && String(val).toLowerCase().includes(pendingTag.selectionText.toLowerCase())))
+                              );
+                            }).length - 3} more
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button className="px-3 py-1 bg-green-600 text-white rounded font-semibold text-xs hover:bg-green-700" onClick={handleApplyTagToRow} disabled={tagging}>Only this transaction</button>
+                      <button className="px-3 py-1 bg-blue-600 text-white rounded font-semibold text-xs hover:bg-blue-700" onClick={handleApplyTagToAll} disabled={applyingTagToAll}>All transactions with this text</button>
+                      <button className="px-3 py-1 bg-gray-200 text-gray-700 rounded font-semibold text-xs hover:bg-gray-300" onClick={() => setPendingTag(null)}>Cancel</button>
+                    </div>
+                    {/* Loading indicator for bulk apply */}
+                    {applyingTagToAll && (
+                      <div className="w-full flex flex-col items-center mt-2">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mb-2"></div>
+                        <span className="text-xs text-blue-700">Applying tag to all matching transactions...</span>
+                      </div>
+                    )}
                   </div>
                 )}
                 

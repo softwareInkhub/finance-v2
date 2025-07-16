@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PutCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLES } from '../../aws-client';
+import { docClient, TABLES, getBankTransactionTable } from '../../aws-client';
 
 // PUT /api/account/[id]
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -36,32 +36,45 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
 
   try {
-    // First, find and delete all related transactions
-    const transactionResult = await docClient.send(
+    // First, get all banks to know which tables to scan
+    const banksResult = await docClient.send(
       new ScanCommand({
-        TableName: TABLES.TRANSACTIONS || 'transactions',
-        FilterExpression: 'accountId = :accountId',
-        ExpressionAttributeValues: {
-          ':accountId': id,
-        },
+        TableName: TABLES.BANKS,
       })
     );
+    const banks = banksResult.Items || [];
+    let totalDeletedTransactions = 0;
 
-    const relatedTransactions = transactionResult.Items || [];
-    console.log(`Found ${relatedTransactions.length} related transactions to delete`);
-
-    // Delete all related transactions
-    if (relatedTransactions.length > 0) {
-      const deleteTransactionPromises = relatedTransactions.map((transaction) =>
-        docClient.send(
-          new DeleteCommand({
-            TableName: TABLES.TRANSACTIONS || 'transactions',
-            Key: { id: transaction.id },
+    // For each bank, scan its transaction table for transactions with this accountId
+    for (const bank of banks) {
+      const tableName = getBankTransactionTable(bank.bankName);
+      try {
+        const transactionResult = await docClient.send(
+          new ScanCommand({
+            TableName: tableName,
+            FilterExpression: 'accountId = :accountId',
+            ExpressionAttributeValues: {
+              ':accountId': id,
+            },
           })
-        )
-      );
-      await Promise.all(deleteTransactionPromises);
-      console.log(`Successfully deleted ${relatedTransactions.length} related transactions`);
+        );
+        const relatedTransactions = transactionResult.Items || [];
+        if (relatedTransactions.length > 0) {
+          const deleteTransactionPromises = relatedTransactions.map((transaction) =>
+            docClient.send(
+              new DeleteCommand({
+                TableName: tableName,
+                Key: { id: transaction.id },
+              })
+            )
+          );
+          await Promise.all(deleteTransactionPromises);
+          totalDeletedTransactions += relatedTransactions.length;
+        }
+      } catch {
+        // If table doesn't exist, skip
+        continue;
+      }
     }
 
     // Find and delete all related statements
@@ -102,7 +115,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     return NextResponse.json({ 
       success: true, 
-      deletedTransactions: relatedTransactions.length,
+      deletedTransactions: totalDeletedTransactions,
       deletedStatements: relatedStatements.length
     });
   } catch (error) {

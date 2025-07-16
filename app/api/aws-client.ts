@@ -44,9 +44,15 @@ export const TABLES = {
   BANKS: 'banks',
   ACCOUNTS: 'accounts',
   BANK_STATEMENTS: process.env.AWS_DYNAMODB_STATEMENTS_TABLE || 'bank-statements',
-  TRANSACTIONS: process.env.AWS_DYNAMODB_TRANSACTIONS_TABLE || 'transactions',
   TAGS: process.env.AWS_DYNAMODB_TAGS_TABLE || 'tags',
 } as const;
+
+// Helper function to get bank-specific transaction table name
+export function getBankTransactionTable(bankName: string): string {
+  // Convert bank name to lowercase and replace spaces/special chars with hyphens
+  const normalizedName = bankName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  return `brmh-${normalizedName}`;
+}
 
 // S3 bucket name
 export const S3_BUCKET = process.env.AWS_S3_BUCKET!; 

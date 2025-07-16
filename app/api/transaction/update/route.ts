@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLES } from '../../aws-client';
+import { docClient, getBankTransactionTable } from '../../aws-client';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { transactionId, transactionData, tags } = body;
-    if (!transactionId || (!transactionData && !tags)) {
+    const { transactionId, transactionData, tags, bankName } = body;
+    if (!transactionId || (!transactionData && !tags) || !bankName) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+    
+    // Get bank-specific table name
+    const tableName = getBankTransactionTable(bankName);
+    
     // Build the update expression dynamically
     const updateFields = [];
     const exprAttrNames: Record<string, string> = {};
@@ -34,7 +38,7 @@ export async function POST(request: Request) {
     const updateExpr = 'SET ' + updateFields.map(f => `#${f} = :${f}`).join(', ');
     await docClient.send(
       new UpdateCommand({
-        TableName: TABLES.TRANSACTIONS || 'transactions',
+        TableName: tableName,
         Key: { id: transactionId },
         UpdateExpression: updateExpr,
         ExpressionAttributeNames: exprAttrNames,

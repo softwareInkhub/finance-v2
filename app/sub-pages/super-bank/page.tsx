@@ -404,6 +404,12 @@ export default function SuperBankPage() {
   const [tagging, setTagging] = useState(false);
   const [tagError, setTagError] = useState<string | null>(null);
   const [tagSuccess, setTagSuccess] = useState<string | null>(null);
+  
+  // Additional loading states for specific tag operations
+  const [applyingTagToRow, setApplyingTagToRow] = useState(false);
+  const [applyingTagToAll, setApplyingTagToAll] = useState(false);
+  const [removingTag, setRemovingTag] = useState<string | boolean>(false);
+  const [creatingTag, setCreatingTag] = useState(false);
 
   const [totalBanks, setTotalBanks] = useState<number>(0);
   const [totalAccounts, setTotalAccounts] = useState<number>(0);
@@ -430,6 +436,11 @@ export default function SuperBankPage() {
   const [reportOpen, setReportOpen] = useState(false);
 
   const [bankIdNameMap, setBankIdNameMap] = useState<{ [id: string]: string }>({});
+
+  // Progress tracking for bulk operations
+  const [matchingTransactions, setMatchingTransactions] = useState<Transaction[]>([]);
+  const [failedTransactions, setFailedTransactions] = useState<{ id: string; error: string; description?: string }[]>([]);
+  const [showRetryButton, setShowRetryButton] = useState(false);
 
   // Helper function to extract tag IDs for API calls
   const extractTagIds = (tags: Tag[]): string[] => {
@@ -564,6 +575,7 @@ export default function SuperBankPage() {
   // Create tag from selection
   const handleCreateTagFromSelection = async () => {
     if (!selection?.text) return;
+    setCreatingTag(true);
     setTagCreateMsg(null);
     try {
       const userId = localStorage.getItem('userId');
@@ -581,22 +593,30 @@ export default function SuperBankPage() {
       }
       
       if (!res.ok) throw new Error("Failed to create tag");
+      
       setTagCreateMsg("Tag created!");
-      setPendingTag(selection.rowIdx !== undefined ? { tagName: selection.text, rowIdx: selection.rowIdx, selectionText: selection.text } : null);
+      setPendingTag(selection.rowIdx !== undefined ? { 
+        tagName: selection.text, 
+        rowIdx: selection.rowIdx, 
+        selectionText: selection.text 
+      } : null);
       setSelection(null);
       // Refresh tags
       const tagsRes = await fetch('/api/tags?userId=' + userId);
       const tags = await tagsRes.json();
       setAllTags(Array.isArray(tags) ? tags : []);
-    } catch {
-      setTagCreateMsg("Failed to create tag");
+    } catch (error) {
+      setTagCreateMsg(error as string || "Failed to create tag");
       setTimeout(() => setTagCreateMsg(null), 1500);
+    } finally {
+      setCreatingTag(false);
     }
   };
 
-  // Apply tag to only this transaction row (flat structure)
+  // Apply tag to only this transaction row
   const handleApplyTagToRow = async () => {
     if (!pendingTag) return;
+    setApplyingTagToRow(true);
     const { tagName, rowIdx } = pendingTag;
     const tagObj = allTags.find(t => t.name === tagName);
     if (!tagObj) return setPendingTag(null);
@@ -606,60 +626,114 @@ export default function SuperBankPage() {
     if (!tx) return setPendingTag(null);
     const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
     if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
-    await fetch('/api/transaction/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags) })
-    });
-    setPendingTag(null);
-    setTagCreateMsg("Tag applied to transaction!");
-    setTimeout(() => setTagCreateMsg(null), 1500);
-    setLoading(true);
-    fetch("/api/transactions/all?userId=" + (localStorage.getItem("userId") || ""))
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setTransactions(data);
-        else setError(data.error || "Failed to fetch transactions");
-      })
-      .catch(() => setError("Failed to fetch transactions"))
-      .finally(() => setLoading(false));
+    try {
+      await fetch('/api/transaction/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags), bankName: tx.bankName })
+      });
+      setPendingTag(null);
+      setTagCreateMsg("Tag applied to transaction!");
+      setTimeout(() => setTagCreateMsg(null), 1500);
+      setLoading(true);
+      fetch("/api/transactions/all?userId=" + (localStorage.getItem("userId") || ""))
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) setTransactions(data);
+          else setError(data.error || "Failed to fetch transactions");
+        })
+        .catch(() => setError("Failed to fetch transactions"))
+        .finally(() => setLoading(false));
+    } catch (error) {
+      setTagError(error as string || 'Failed to apply tag to transaction');
+    } finally {
+      setApplyingTagToRow(false);
+    }
   };
 
   // Apply tag to all transactions where selection text is present in ANY field (except tags, case-sensitive, all columns)
   const handleApplyTagToAll = async () => {
     if (!pendingTag) return;
+    setApplyingTagToAll(true);
+    // Hide the preview modal immediately when starting
+    setPendingTag(null);
+    
     const { tagName, selectionText } = pendingTag;
     const tagObj = allTags.find(t => t.name === tagName);
-    if (!tagObj) return setPendingTag(null);
-    await Promise.all(transactions.map(async (tx) => {
-      // Check all primitive fields except arrays/objects and 'tags' for case-sensitive match
-      const hasMatch = Object.entries(tx).some(([key, val]) =>
+    if (!tagObj) return;
+    
+    // Find all matching transactions first
+    const matching = transactions.filter((tx) => {
+      // Check all primitive fields except arrays/objects and 'tags' for case-insensitive match
+      return Object.entries(tx).some(([key, val]) =>
         key !== 'tags' &&
-        ((typeof val === 'string' && val.includes(selectionText)) ||
-         (typeof val === 'number' && String(val).includes(selectionText)))
+        ((typeof val === 'string' && val.toLowerCase().includes(selectionText.toLowerCase())) ||
+         (typeof val === 'number' && String(val).toLowerCase().includes(selectionText.toLowerCase())))
       );
-      if (hasMatch) {
+    });
+    
+    setMatchingTransactions(matching);
+    
+    try {
+      // Prepare bulk update data
+      const bulkUpdates = matching.map(tx => {
         const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
         if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
-        await fetch('/api/transaction/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags) })
-        });
+        
+        return {
+          transactionId: tx.id,
+          tags: extractTagIds(tags),
+          bankName: tx.bankName
+        };
+      });
+      
+      // Use bulk update API
+      const response = await fetch('/api/transaction/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: bulkUpdates })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Bulk update failed');
       }
-    }));
-    setPendingTag(null);
-    setTagCreateMsg("Tag applied to all matching transactions!");
-    setTimeout(() => setTagCreateMsg(null), 1500);
-    setLoading(true);
-    fetch("/api/transactions/all?userId=" + (localStorage.getItem("userId") || ""))
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setTransactions(data);
-        else setError(data.error || "Failed to fetch transactions");
-      })
-      .catch(() => setError("Failed to fetch transactions"))
-      .finally(() => setLoading(false));
+      
+      const result = await response.json();
+      
+      // Handle results
+      const failedTransactions = result.failed || [];
+      const successfulCount = result.successful || 0;
+      
+      // Store failed transactions globally
+      setFailedTransactions(failedTransactions);
+      setShowRetryButton(failedTransactions.length > 0);
+      
+      // Show detailed results
+      if (failedTransactions.length === 0) {
+        setTagCreateMsg(`✅ Tag applied to all ${matching.length} matching transactions!`);
+      } else {
+        setTagCreateMsg(`⚠️ Tag applied to ${successfulCount} transactions. ${failedTransactions.length} failed.`);
+        console.error('Failed transactions:', failedTransactions);
+      }
+      
+      setTimeout(() => setTagCreateMsg(null), 3000);
+      setLoading(true);
+      fetch("/api/transactions/all?userId=" + (localStorage.getItem("userId") || ""))
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) setTransactions(data);
+          else setError(data.error || "Failed to fetch transactions");
+        })
+        .catch(() => setError("Failed to fetch transactions"))
+        .finally(() => setLoading(false));
+    } catch (error) {
+      setTagError('Failed to apply tag to all matching transactions');
+      console.error('Bulk update error:', error);
+    } finally {
+      setApplyingTagToAll(false);
+      setMatchingTransactions([]);
+    }
   };
 
   // Helper to normalize date to dd/mm/yyyy
@@ -877,17 +951,28 @@ export default function SuperBankPage() {
     const tagObj = allTags.find(t => t.id === selectedTagId);
     if (!tagObj) { setTagging(false); return; }
     try {
-      await Promise.all(Array.from(selectedRows).map(async (id) => {
+      // Prepare bulk update data
+      const bulkUpdates = Array.from(selectedRows).map(id => {
         const tx = transactions.find(t => t.id === id);
-        if (!tx) return;
+        if (!tx) return null;
         const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
         if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
-        await fetch('/api/transaction/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags) })
-        });
-      }));
+        return {
+          transactionId: tx.id,
+          tags: tags.map(tag => tag.id),
+          bankName: tx.bankName
+        };
+      }).filter(Boolean);
+      // Use bulk update API
+      const response = await fetch('/api/transaction/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: bulkUpdates })
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Bulk update failed');
+      }
       setTagSuccess('Tag added!');
       setSelectedTagId("");
       setSelectedRows(new Set());
@@ -924,22 +1009,37 @@ export default function SuperBankPage() {
     if (!confirmed) return;
     
     const tags = Array.isArray(tx.tags) ? tx.tags.filter((t) => t.id !== tagId) : [];
-    await fetch('/api/transaction/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags) })
-    });
-    setTagCreateMsg('Tag removed!');
-    setTimeout(() => setTagCreateMsg(null), 1500);
-    setLoading(true);
-    fetch("/api/transactions/all?userId=" + (localStorage.getItem("userId") || ""))
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setTransactions(data);
-        else setError(data.error || "Failed to fetch transactions");
-      })
-      .catch(() => setError("Failed to fetch transactions"))
-      .finally(() => setLoading(false));
+    if (tags.length === 0) {
+      setRemovingTag('Removing all tags from transaction...');
+    } else {
+      setRemovingTag(true);
+    }
+    try {
+      await fetch('/api/transaction/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: tx.id, tags: extractTagIds(tags), bankName: tx.bankName })
+      });
+      setTagCreateMsg('Tag removed!');
+      setTimeout(() => setTagCreateMsg(null), 1500);
+      setLoading(true);
+      fetch("/api/transactions/all?userId=" + (localStorage.getItem("userId") || ""))
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) setTransactions(data);
+          else setError(data.error || "Failed to fetch transactions");
+        })
+        .catch(() => setError("Failed to fetch transactions"))
+        .finally(() => {
+          setLoading(false);
+          // Refresh the tab after tag deletion
+          window.location.reload();
+        });
+    } catch (error) {
+      setTagError(error as string || 'Failed to remove tag');
+    } finally {
+      setRemovingTag(false);
+    }
   };
 
   // Analytics calculations using mappedRowsWithConditions (filteredRows already contains the filtered version)
@@ -982,6 +1082,14 @@ export default function SuperBankPage() {
     }
   }, [tagCreateMsg]);
 
+  // Automatically clear tagError after 3 seconds
+  useEffect(() => {
+    if (tagError) {
+      const timeout = setTimeout(() => setTagError(null), 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [tagError]);
+
   // Handler for column reordering
   const handleReorderHeaders = (newHeaders: string[]) => {
     setSuperHeader(newHeaders);
@@ -1017,7 +1125,21 @@ export default function SuperBankPage() {
 
   // New handleTagDeleted function
   const handleTagDeleted = () => {
-    // Implementation of handleTagDeleted function
+    // Refetch all tags
+    const userId = localStorage.getItem('userId');
+    fetch('/api/tags?userId=' + userId)
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setAllTags(data); else setAllTags([]); });
+    // Refetch all transactions
+    setLoading(true);
+    fetch("/api/transactions/all?userId=" + (userId || ""))
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setTransactions(data);
+        else setError(data.error || "Failed to fetch transactions");
+      })
+      .catch(() => setError("Failed to fetch transactions"))
+      .finally(() => setLoading(false));
   };
 
 
@@ -1243,6 +1365,88 @@ export default function SuperBankPage() {
     return tag.id;
   };
 
+  // Retry failed transactions
+  const handleRetryFailedTransactions = async () => {
+    if (failedTransactions.length === 0) return;
+    
+    setApplyingTagToAll(true);
+    
+    try {
+      // Find the tag that was being applied (from the last operation)
+      const tagObj = allTags.find(t => t.name === pendingTag?.tagName);
+      if (!tagObj) {
+        setTagError('Could not find the tag to retry');
+        return;
+      }
+      
+      // Prepare bulk update data for failed transactions
+      const bulkUpdates = failedTransactions.map(failedTx => {
+        const tx = transactions.find(t => t.id === failedTx.id);
+        if (!tx) return null;
+        
+        const tags = Array.isArray(tx.tags) ? [...tx.tags] : [];
+        if (!tags.some((t) => t.id === tagObj.id)) tags.push(tagObj);
+        
+        return {
+          transactionId: tx.id,
+          tags: extractTagIds(tags),
+          bankName: tx.bankName
+        };
+      }).filter(Boolean);
+      
+      // Use bulk update API
+      const response = await fetch('/api/transaction/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: bulkUpdates })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Bulk retry failed');
+      }
+      
+      const result = await response.json();
+      
+      // Handle results
+      const retryFailed = result.failed || [];
+      const retrySuccessfulCount = result.successful || 0;
+      
+      setFailedTransactions(retryFailed);
+      setShowRetryButton(retryFailed.length > 0);
+      
+      if (retryFailed.length === 0) {
+        setTagCreateMsg(`✅ Retry successful! All ${failedTransactions.length} transactions updated.`);
+      } else {
+        setTagCreateMsg(`⚠️ Retry: ${retrySuccessfulCount} succeeded, ${retryFailed.length} still failed.`);
+      }
+      
+      setTimeout(() => setTagCreateMsg(null), 3000);
+      
+      // Refresh transactions
+      setLoading(true);
+      fetch("/api/transactions/all?userId=" + (localStorage.getItem("userId") || ""))
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) setTransactions(data);
+          else setError(data.error || "Failed to fetch transactions");
+        })
+        .catch(() => setError("Failed to fetch transactions"))
+        .finally(() => setLoading(false));
+    } catch (error) {
+      setTagError('Failed to retry failed transactions');
+      console.error('Bulk retry error:', error);
+    } finally {
+      setApplyingTagToAll(false);
+    }
+  };
+
+  // Clear failed transactions state
+  const handleClearFailedTransactions = () => {
+    setFailedTransactions([]);
+    setShowRetryButton(false);
+  };
+
   return (
     <div className="min-h-screen py-4 sm:py-6 px-2 sm:px-4">
       <div className="max-w-full sm:max-w-[75%] mx-auto">
@@ -1442,23 +1646,105 @@ export default function SuperBankPage() {
         )}
         {/* Table and selection logic */}
         <div ref={tableRef} className="overflow-x-auto relative">
+          {/* Global loading overlay for tag operations */}
+          {(applyingTagToRow || applyingTagToAll || removingTag || creatingTag || tagging) && (
+            <div className="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-lg px-6 py-4 max-w-md w-full mx-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="text-gray-700 font-medium">
+                    {applyingTagToRow ? 'Applying tag to transaction...' :
+                     applyingTagToAll ? 'Applying tag to all matching transactions...' :
+                     (removingTag && typeof removingTag === 'string') ? removingTag :
+                     removingTag ? 'Removing tag...' :
+                     creatingTag ? 'Creating tag...' :
+                     tagging ? 'Adding tag...' : 'Processing...'}
+                  </span>
+                </div>
+                
+                {/* Show matching transactions for bulk operations */}
+                {applyingTagToAll && matchingTransactions.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="text-sm text-gray-600">
+                      Found <span className="font-semibold text-blue-600">{matchingTransactions.length}</span> matching transactions
+                    </div>
+                    
+                    <div className="text-xs text-gray-500 text-center">
+                      Updating all transactions in bulk...
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {/* Floating create tag button */}
           {selection && (
             <button
               style={{ position: 'absolute', left: selection.x, top: selection.y + 8, zIndex: 1000 }}
-              className="px-3 py-1 bg-blue-600 text-white rounded shadow font-semibold text-xs hover:bg-blue-700 transition-all"
+              className="px-3 py-1 bg-blue-600 text-white rounded shadow font-semibold text-xs hover:bg-blue-700 transition-all disabled:opacity-50"
               onClick={handleCreateTagFromSelection}
+              disabled={creatingTag}
             >
-              + Create Tag from Selection
+              {creatingTag ? 'Creating...' : '+ Create Tag from Selection'}
             </button>
           )}
           {/* Prompt to apply tag to transaction */}
           {pendingTag && (
-            <div style={{ position: 'absolute', left: selection?.x, top: selection?.y !== undefined ? selection.y + 8 : 48, zIndex: 1001 }} className="bg-white border border-blue-200 rounded shadow-lg px-3 sm:px-4 py-2 sm:py-3 flex flex-col gap-2 sm:gap-3 items-center">
+            <div style={{ position: 'absolute', left: selection?.x, top: selection?.y !== undefined ? selection.y + 8 : 48, zIndex: 1001 }} className="bg-white border border-blue-200 rounded shadow-lg px-3 sm:px-4 py-2 sm:py-3 flex flex-col gap-2 sm:gap-3 items-center max-w-md">
               <span className="text-sm">Apply tag &quot;{pendingTag.tagName}&quot; to:</span>
+              
+              {/* Show preview of matching transactions for "All transactions with this text" */}
+              {pendingTag.selectionText && (
+                <div className="w-full">
+                  <div className="text-xs text-gray-600 mb-2">
+                    Matching transactions with &quot;{pendingTag.selectionText}&quot;:
+                  </div>
+                  <div className="max-h-24 overflow-y-auto bg-gray-50 rounded p-2">
+                    {transactions.filter((tx) => {
+                      return Object.entries(tx).some(([key, val]) =>
+                        key !== 'tags' &&
+                        ((typeof val === 'string' && val.toLowerCase().includes(pendingTag.selectionText.toLowerCase())) ||
+                         (typeof val === 'number' && String(val).toLowerCase().includes(pendingTag.selectionText.toLowerCase())))
+                      );
+                    }).slice(0, 3).map((tx) => (
+                      <div key={tx.id} className="text-xs text-gray-600 py-1 border-b border-gray-200 last:border-b-0">
+                        <div className="flex justify-between">
+                          <span className="truncate">
+                            {String(tx.Description || tx.description || tx.Reference || tx.reference || 'Transaction')}
+                          </span>
+                          <span className="text-gray-500 ml-2">
+                            {tx.Amount ? `₹${tx.Amount}` : ''}
+                          </span>
+                        </div>
+                        <div className="text-gray-400 text-xs">
+                          {String(tx.Date || tx.date || '')} • {bankIdNameMap[tx.bankId] || 'Unknown Bank'}
+                        </div>
+                      </div>
+                    ))}
+                    {transactions.filter((tx) => {
+                      return Object.entries(tx).some(([key, val]) =>
+                        key !== 'tags' &&
+                        ((typeof val === 'string' && val.toLowerCase().includes(pendingTag.selectionText.toLowerCase())) ||
+                         (typeof val === 'number' && String(val).toLowerCase().includes(pendingTag.selectionText.toLowerCase())))
+                      );
+                    }).length > 3 && (
+                      <div className="text-xs text-gray-500 text-center py-1">
+                        ... and {transactions.filter((tx) => {
+                          return Object.entries(tx).some(([key, val]) =>
+                            key !== 'tags' &&
+                            ((typeof val === 'string' && val.toLowerCase().includes(pendingTag.selectionText.toLowerCase())) ||
+                             (typeof val === 'number' && String(val).toLowerCase().includes(pendingTag.selectionText.toLowerCase())))
+                          );
+                        }).length - 3} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
               <div className="flex flex-col sm:flex-row gap-2">
-                <button className="px-3 py-1 bg-green-600 text-white rounded font-semibold text-xs hover:bg-green-700" onClick={handleApplyTagToRow}>Only this transaction</button>
-                <button className="px-3 py-1 bg-blue-600 text-white rounded font-semibold text-xs hover:bg-blue-700" onClick={handleApplyTagToAll}>All transactions with this text</button>
+                <button className="px-3 py-1 bg-green-600 text-white rounded font-semibold text-xs hover:bg-green-700" onClick={handleApplyTagToRow} disabled={applyingTagToRow}>{applyingTagToRow ? 'Applying...' : 'Only this transaction'}</button>
+                <button className="px-3 py-1 bg-blue-600 text-white rounded font-semibold text-xs hover:bg-blue-700" onClick={handleApplyTagToAll} disabled={applyingTagToAll}>{applyingTagToAll ? 'Applying...' : 'All transactions with this text'}</button>
                 <button className="px-3 py-1 bg-gray-200 text-gray-700 rounded font-semibold text-xs hover:bg-gray-300" onClick={() => setPendingTag(null)}>Cancel</button>
               </div>
             </div>
@@ -1466,6 +1752,29 @@ export default function SuperBankPage() {
           {tagCreateMsg && (
             <div className="absolute left-1/2 top-2 -translate-x-1/2 bg-green-100 text-green-800 px-3 sm:px-4 py-2 rounded shadow text-xs sm:text-sm z-50">
               {tagCreateMsg}
+            </div>
+          )}
+          {tagError && (
+            <div className="absolute left-1/2 top-2 -translate-x-1/2 bg-red-100 text-red-800 px-3 sm:px-4 py-2 rounded shadow text-xs sm:text-sm z-50">
+              {tagError}
+            </div>
+          )}
+          {showRetryButton && failedTransactions.length > 0 && (
+            <div className="absolute left-1/2 top-16 -translate-x-1/2 bg-yellow-100 text-yellow-800 px-3 sm:px-4 py-2 rounded shadow text-xs sm:text-sm z-50 flex items-center gap-2">
+              <span>{failedTransactions.length} transactions failed</span>
+              <button 
+                onClick={handleRetryFailedTransactions}
+                className="bg-yellow-600 text-white px-2 py-1 rounded text-xs hover:bg-yellow-700"
+                disabled={applyingTagToAll}
+              >
+                {applyingTagToAll ? 'Retrying...' : 'Retry'}
+              </button>
+              <button 
+                onClick={handleClearFailedTransactions}
+                className="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-700"
+              >
+                Clear
+              </button>
             </div>
           )}
           <TransactionTable

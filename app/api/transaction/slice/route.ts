@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLES } from '../../aws-client';
+import { docClient, getBankTransactionTable } from '../../aws-client';
 import { v4 as uuidv4 } from 'uuid';
 import Papa from 'papaparse';
 
@@ -9,17 +9,21 @@ export const runtime = 'nodejs';
 export async function POST(request: Request) {
   try {
     const { csv, statementId, startRow, endRow, bankId, accountId, fileName, userId, bankName, accountName, duplicateCheckFields, s3FileUrl } = await request.json();
-    if (!csv || !statementId || startRow == null || endRow == null || !bankId || !accountId) {
+    if (!csv || !statementId || startRow == null || endRow == null || !bankId || !accountId || !bankName) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+    
+    // Get bank-specific table name
+    const tableName = getBankTransactionTable(bankName);
+    
     // Parse CSV to array of objects
     const parsed = Papa.parse(csv, { header: true });
     const rows = parsed.data as Record<string, string>[];
     const now = new Date().toISOString();
 
-    // Fetch existing transactions for this accountId
+    // Fetch existing transactions for this accountId from the bank-specific table
     const existingResult = await docClient.send(new ScanCommand({
-      TableName: TABLES.TRANSACTIONS || 'transactions',
+      TableName: tableName,
       FilterExpression: 'accountId = :accountId',
       ExpressionAttributeValues: { ':accountId': accountId },
     }));
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Save each row as a separate transaction item
+    // Save each row as a separate transaction item in the bank-specific table
     const putPromises = rows.map((row) => {
       // Clean row and add extra fields
       const cleaned: Record<string, string | string[]> = {};
@@ -60,7 +64,7 @@ export async function POST(request: Request) {
       cleaned['createdAt'] = now;
       cleaned['id'] = uuidv4();
       return docClient.send(new PutCommand({
-        TableName: TABLES.TRANSACTIONS || 'transactions',
+        TableName: tableName,
         Item: cleaned,
       }));
     });
