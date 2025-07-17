@@ -37,6 +37,8 @@ export async function POST(request: Request) {
       id,
       bankName,
       tags: Array.isArray(tags) ? tags : [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     await docClient.send(

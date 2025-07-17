@@ -74,10 +74,9 @@ export async function POST(request: Request) {
       accountId,
       s3FileUrl,
       fileName: uniqueFileName,
-      transactionHeader: [],
-      transactionData: [],
-      tags: [],
       userId: userId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
     
     await docClient.send(
