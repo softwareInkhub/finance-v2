@@ -138,29 +138,50 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({ isOpe
   };
 
   const handleSave = async () => {
-    if (!transactionId) return;
+    if (!data.length) return;
     setSaving(true);
     setSaveError(null);
     try {
-      // Save to backend (update DynamoDB and S3 if needed)
       // Convert tags to IDs for storage
-      const dataWithTagIds = data.map(row => ({
+      const dataWithTagIds: Array<{ id: string; tags: string[]; [key: string]: unknown }> = data.map((row: Record<string, unknown>) => ({
         ...row,
-        tags: Array.isArray(row.tags) ? row.tags.map(tag => tag.id) : row.tags
+        id: row.id as string,
+        tags: Array.isArray(row.tags) ? (row.tags as Tag[]).map((tag: Tag) => tag.id) : [],
       }));
-      
-      const res = await fetch('/api/transaction/update', {
+      // Get bankName from the first row data
+      const bankName = (dataWithTagIds[0] as Record<string, unknown>)?.bankName;
+      if (!bankName) {
+        throw new Error('Bank name not found in transaction data');
+      }
+      // Prepare bulk update payload
+      const bulkUpdates = dataWithTagIds
+        .filter(row => typeof row.id === 'string' && row.id)
+        .map(row => ({
+          transactionId: row.id as string,
+          transactionData: row,
+          tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
+          bankName
+        }));
+      const res = await fetch('/api/transaction/bulk-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionId, transactionData: dataWithTagIds }),
+        body: JSON.stringify({ updates: bulkUpdates })
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to save updated transaction');
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to save transactions');
       }
-      alert('Transaction updated!');
+      type BulkResult = { transactionId: string; success: boolean; error?: string };
+      const failed: BulkResult[] = result.results ? (result.results as BulkResult[]).filter((r) => !r.success) : [];
+      if (failed.length > 0) {
+        setSaveError(`${failed.length} transaction(s) failed to save. Please retry.`);
+        // Optionally, you could store failed for retry logic
+      } else {
+        setSaveError(null);
+        alert('All transactions saved successfully!');
+      }
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save updated transaction');
+      setSaveError(err instanceof Error ? err.message : 'Failed to save transactions');
     } finally {
       setSaving(false);
     }

@@ -87,7 +87,7 @@ const SlicedPreviewModal: React.FC<{
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Sliced Transactions Preview">
+  <Modal isOpen={isOpen} onClose={onClose} title="Sliced Transactions Preview">
       <div className="mb-2">
         <div className="font-semibold mb-1">Select fields to check for duplicate transactions:</div>
         <div className="flex flex-wrap gap-2 mb-2">
@@ -117,8 +117,8 @@ const SlicedPreviewModal: React.FC<{
           <FiColumns /> Delimit Column
         </button>
       </div>
-      <div className="overflow-x-auto max-h-[70vh]">
-        <table className="min-w-full border text-sm">
+    <div className="overflow-x-auto max-h-[70vh]">
+      <table className="min-w-full border text-sm">
           {previewData.length > 0 && (
             <thead>
               <tr>
@@ -128,34 +128,34 @@ const SlicedPreviewModal: React.FC<{
               </tr>
             </thead>
           )}
-          <tbody>
+        <tbody>
             {previewData.slice(1).map((row, i) => (
-              <tr key={i}>
-                {row.map((cell, j) => (
-                  <td key={j} className="border px-2 py-1 whitespace-nowrap">{cell}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex justify-end mt-4 space-x-2">
-        <button
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            <tr key={i}>
+              {row.map((cell, j) => (
+                <td key={j} className="border px-2 py-1 whitespace-nowrap">{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div className="flex justify-end mt-4 space-x-2">
+      <button
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           onClick={() => onSave(selectedFields, previewData)}
           disabled={saving || selectedFields.length === 0}
-        >
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-        <button
-          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-          onClick={onClose}
-          disabled={saving}
-        >
-          Cancel
-        </button>
-      </div>
-      {saveError && <div className="text-red-600 mt-2">{saveError}</div>}
+      >
+        {saving ? 'Saving...' : 'Save'}
+      </button>
+      <button
+        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+        onClick={onClose}
+        disabled={saving}
+      >
+        Cancel
+      </button>
+    </div>
+    {saveError && <div className="text-red-600 mt-2">{saveError}</div>}
       {/* Delimit Dialog */}
       {delimitDialogOpen && (
         <Modal isOpen={delimitDialogOpen} onClose={() => setDelimitDialogOpen(false)} title="Delimit Column" maxWidthClass="max-w-sm">
@@ -217,8 +217,8 @@ const SlicedPreviewModal: React.FC<{
           </div>
         </Modal>
       )}
-    </Modal>
-  );
+  </Modal>
+);
 };
 
 const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, onClose, s3FileUrl, statementId, bankId, accountId, fileName }) => {
@@ -256,7 +256,10 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
     fetch('/api/statement/presign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ 
+        key,
+        userId: localStorage.getItem("userId") || ""
+      }),
     })
       .then(res => res.json())
       .then(({ url, error }) => {
@@ -359,7 +362,7 @@ const StatementPreviewModal: React.FC<StatementPreviewModalProps> = ({ isOpen, o
     setSelectionStep('transactions');
   };
 
-  
+
   return (
     <>
       <Modal isOpen={isOpen} onClose={onClose} title="Statement Preview">

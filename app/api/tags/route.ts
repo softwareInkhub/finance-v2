@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ScanCommand, PutCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLES } from '../aws-client';
+import { docClient, TABLES, getBankTransactionTable } from '../aws-client';
 import { v4 as uuidv4 } from 'uuid';
 import { ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
@@ -92,25 +92,34 @@ export async function DELETE(request: Request) {
     // 1. Delete the tag itself
     await docClient.send(new DeleteCommand({ TableName: TABLES.TAGS, Key: { id } }));
 
-    // 2. Remove this tag from all transactions
-    // Fetch all transactions
-    const txResult = await docClient.send(new ScanCommand({ TableName: TABLES.TRANSACTIONS || 'transactions' }));
-    const transactions = Array.isArray(txResult.Items) ? txResult.Items : [];
-    // For each transaction, if it has this tag ID, remove it and update
-    const updatePromises = transactions.map(async (tx) => {
-      if (!Array.isArray(tx.tags) || tx.tags.length === 0) return;
-      // Filter out the tag ID to be deleted
-      const newTags = tx.tags.filter((tagId) => tagId !== id);
-      if (newTags.length === tx.tags.length) return; // no change
-      await docClient.send(new UpdateCommand({
-        TableName: TABLES.TRANSACTIONS || 'transactions',
-        Key: { id: tx.id },
-        UpdateExpression: 'SET #tags = :tags',
-        ExpressionAttributeNames: { '#tags': 'tags' },
-        ExpressionAttributeValues: { ':tags': newTags },
-      }));
-    });
-    await Promise.all(updatePromises);
+    // 2. Remove this tag from all transactions in all bank-specific tables
+    // Get all banks
+    const banksResult = await docClient.send(new ScanCommand({ TableName: TABLES.BANKS }));
+    const banks = banksResult.Items || [];
+    for (const bank of banks) {
+      const tableName = getBankTransactionTable(bank.bankName);
+      try {
+        const txResult = await docClient.send(new ScanCommand({ TableName: tableName }));
+        const transactions = Array.isArray(txResult.Items) ? txResult.Items : [];
+        const updatePromises = transactions.map(async (tx) => {
+          if (!Array.isArray(tx.tags) || tx.tags.length === 0) return;
+          // Filter out the tag ID to be deleted
+          const newTags = tx.tags.filter((tagId) => tagId !== id);
+          if (newTags.length === tx.tags.length) return; // no change
+          await docClient.send(new UpdateCommand({
+            TableName: tableName,
+            Key: { id: tx.id },
+            UpdateExpression: 'SET #tags = :tags',
+            ExpressionAttributeNames: { '#tags': 'tags' },
+            ExpressionAttributeValues: { ':tags': newTags },
+          }));
+        });
+        await Promise.all(updatePromises);
+      } catch {
+        // If table doesn't exist, skip
+        continue;
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

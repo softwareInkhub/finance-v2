@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PutCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLES } from '../../aws-client';
+import { docClient, TABLES, getBankTransactionTable } from '../../aws-client';
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,32 +30,41 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
 
   try {
-    // First, find and delete all related transactions
+    // Get the bankName for this bank id
+    const bankResult = await docClient.send(
+      new ScanCommand({
+        TableName: TABLES.BANKS,
+        FilterExpression: 'id = :id',
+        ExpressionAttributeValues: { ':id': id },
+      })
+    );
+    const bank = (bankResult.Items && bankResult.Items[0]) || null;
+    if (!bank) {
+      return NextResponse.json({ error: 'Bank not found' }, { status: 404 });
+    }
+    const tableName = getBankTransactionTable(bank.bankName);
+
+    // Find and delete all related transactions for this bank
     const transactionResult = await docClient.send(
       new ScanCommand({
-        TableName: TABLES.TRANSACTIONS || 'transactions',
+        TableName: tableName,
         FilterExpression: 'bankId = :bankId',
         ExpressionAttributeValues: {
           ':bankId': id,
         },
       })
     );
-
     const relatedTransactions = transactionResult.Items || [];
-    console.log(`Found ${relatedTransactions.length} related transactions to delete`);
-
-    // Delete all related transactions
     if (relatedTransactions.length > 0) {
       const deleteTransactionPromises = relatedTransactions.map((transaction) =>
         docClient.send(
           new DeleteCommand({
-            TableName: TABLES.TRANSACTIONS || 'transactions',
+            TableName: tableName,
             Key: { id: transaction.id },
           })
         )
       );
       await Promise.all(deleteTransactionPromises);
-      console.log(`Successfully deleted ${relatedTransactions.length} related transactions`);
     }
 
     // Find and delete all related statements
@@ -115,12 +124,12 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }
 
     // Finally, delete the bank itself
-    await docClient.send(
-      new DeleteCommand({
-        TableName: TABLES.BANKS,
-        Key: { id },
-      })
-    );
+  await docClient.send(
+    new DeleteCommand({
+      TableName: TABLES.BANKS,
+      Key: { id },
+    })
+  );
 
     return NextResponse.json({ 
       success: true, 
